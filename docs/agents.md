@@ -82,6 +82,19 @@ A running record of who built what, for auditing. Newest first.
 
 | Task | Agent | PR | Status |
 |---|---|---|---|
+| 3.11 `short_deriver` (9:16) | Daedalus | #39 | ✅ |
+| 3.9 `visual_director` | Daedalus | #38 | ✅ |
+| 3.10 FFmpeg assembly | Daedalus | #37 | ✅ |
+| 3.8 Colab render job | Icarus | #36 | ✅ |
+| 3.5 stock client | Pygmalion | #35 | ✅ |
+| 1.15 CI ffmpeg fix | Atlas | #34 | ✅ |
+| 3.7 hero video cascade | Icarus | #33 | ✅ |
+| 3.6 motion (FFmpeg) | Daedalus | #32 | ✅ |
+| 3.4 Stable Horde client | Pygmalion | #31 | ✅ |
+| 3.3 Pollinations images | Pygmalion | #30 | ✅ |
+| 3.2 captions (SRT/ASS) | Daedalus | #29 | ✅ |
+| 3.1 `voice_director` + TTS | Orpheus | #28 | ✅ |
+| 1.14 Media roster | Atlas | #27 | ✅ |
 | 2.6 `localizer` | Polyhymnia | #25 | ✅ |
 | 2.7 `script_director` | Calliope | #24 | ✅ |
 | 2.3 `research` + factcheck | Melete | #23 | ✅ |
