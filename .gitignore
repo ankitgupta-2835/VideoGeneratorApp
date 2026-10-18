@@ -1,0 +1,30 @@
+# ---- Secrets (never commit) ----
+.env
+.env.*
+!.env.example
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- Project data / media (never commit) ----
+data/output/
+data/history.db
+data/assets/*
+!data/assets/.gitkeep
+*.mp4
+*.mkv
+*.mov
+*.wav
+*.mp3
