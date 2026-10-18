@@ -20,6 +20,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Install system tools (ffmpeg)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Lint (ruff)
         run: ruff check .
 
@@ -30,4 +33,4 @@ jobs:
         run: mypy
 
       - name: Tests
-        run: pytest --cov=src --cov-report=term-missing
+        run: pytest -rs --cov=src --cov-report=term-missing
