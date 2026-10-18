@@ -75,16 +75,22 @@ point: the same identity is accountable for its whole domain.
 
 ## Assignment ledger
 
-A running record of who built what, for auditing.
+A running record of who built what, for auditing. Newest first.
 
 | Task | Agent | PR | Status |
 |---|---|---|---|
-| 1.11 | Atlas | #16 | ✅ |
-| 1.12 | Atlas | — | this section |
-| 2.1 | Pythia | #17 | ✅ |
-| 2.4 | Atlas | #18 | ✅ |
-| 1.8 | Pythia | #15 | ✅ |
-| 1.9 | Pythia | #13 | ✅ |
-| 1.10 | Argus | #14 | ✅ |
+| 2.6 `localizer` | Polyhymnia | #25 | ✅ |
+| 2.7 `script_director` | Calliope | #24 | ✅ |
+| 2.3 `research` + factcheck | Melete | #23 | ✅ |
+| 2.8 `compliance` | Sentinel | #22 | ✅ |
+| 2.5 `scriptwriter` | Calliope | #21 | ✅ |
+| 2.2 `angle_strategist` | Melete | #20 | ✅ |
+| 2.4 Blueprint schema + validator | Atlas | #18 | ✅ |
+| 2.1 `trend_scout` | Pythia | #17 | ✅ |
+| 1.12 Observability conventions | Atlas | #19 | ✅ |
+| 1.11 Agent roster | Atlas | #16 | ✅ |
+| 1.8 News RSS | Pythia | #15 | ✅ |
+| 1.9 YouTube mostPopular | Pythia | #13 | ✅ |
+| 1.10 Scorer + dedup | Argus | #14 | ✅ |
 
-*(Earlier Phase 0/1 tasks predate the roster and were built directly by the Conductor.)*
+*(Tasks before 1.8 predate the roster and were built directly by the Conductor.)*
