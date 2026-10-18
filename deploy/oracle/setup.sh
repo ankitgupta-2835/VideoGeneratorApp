@@ -54,9 +54,12 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
   log "creating virtualenv at $VENV_DIR"
   python3 -m venv "$VENV_DIR"
 fi
-log "installing package (editable) into the venv"
+log "installing package (editable) + edge-tts TTS into the venv"
 "$VENV_DIR/bin/python" -m pip install --upgrade pip
 "$VENV_DIR/bin/python" -m pip install -e "$REPO_DIR"
+# edge-tts is an optional runtime dependency (lazy-imported for narration), so
+# it is not pulled in by the package metadata; install it explicitly.
+"$VENV_DIR/bin/python" -m pip install edge-tts
 
 # ---- 4. Seed .env ----------------------------------------------------------
 if [ ! -f "$REPO_DIR/.env" ]; then
