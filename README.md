@@ -101,15 +101,21 @@ cp .env.example .env
 # 4. Run the pipeline engine end-to-end with no external calls
 python -m src.pipeline --category ai_tech --dry-run
 
+# 5. Produce a real, bounded demo video (one free LLM key; image-only visuals)
+python -m src.pipeline --category ai_tech --demo --max-scenes 6
+
 # ...or the installed console script, which is equivalent
-videogen --category ai_tech --dry-run
+videogen --category ai_tech --demo --max-scenes 6
 ```
 
 The module form and the `videogen` console script take the same arguments:
 `--category` (one of `ai_tech`, `finance`, `health_fitness`,
-`general_knowledge`), `--language` (`en` or `hi`), `--dry-run`, and
-`--work-dir`. `--dry-run` needs no API keys and writes a marker file per stage
-under `runs/<run_id>/stages/`.
+`general_knowledge`), `--language` (`en` or `hi`), `--dry-run`, `--demo`,
+`--max-scenes` and `--work-dir`. `--dry-run` needs no API keys and writes a
+marker file per stage under `runs/<run_id>/stages/`. `--demo` is a bounded live
+run (real clients from `.env`, English only, image-only visuals, publisher
+dry-run) capped to `--max-scenes` scenes (default 6); see
+[`docs/demo.md`](docs/demo.md) for the end-to-end Oracle VM recipe.
 
 ## Configuration
 
@@ -187,7 +193,10 @@ notebooks/   hero_render.ipynb (Colab GPU)
 
 The operational runbook for a $0, cloud-only deployment — Oracle VM setup,
 secrets matrix, the Colab GPU step, and scheduling via cron / systemd /
-GitHub Actions — is in [`docs/deploy.md`](docs/deploy.md).
+GitHub Actions — is in [`docs/deploy.md`](docs/deploy.md). A scheduled daily run
+also exists as a GitHub Actions workflow at
+[`.github/workflows/daily.yml`](.github/workflows/daily.yml). To produce a first
+real video on the free VM, start with [`docs/demo.md`](docs/demo.md).
 
 ## License
 

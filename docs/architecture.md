@@ -177,4 +177,8 @@ The VM and Colab never talk directly: they exchange JSON job/result files
 through a shared Drive folder, using the contract in
 [`render_job.py`](../src/visuals/render_job.py). Full setup — Oracle VM
 bootstrap, the secrets matrix, the Colab step, and scheduling — is in
-[`deploy.md`](deploy.md).
+[`deploy.md`](deploy.md). The scheduled daily run is defined by the GitHub
+Actions workflow [`../.github/workflows/daily.yml`](../.github/workflows/daily.yml)
+(02:30 UTC, with a manual `workflow_dispatch` for one category); the bounded
+`--demo` mode for producing a first real video on the free VM is described in
+[`demo.md`](demo.md).
