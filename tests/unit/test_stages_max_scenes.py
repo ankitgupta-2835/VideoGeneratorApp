@@ -3,7 +3,9 @@
 Modeled on the E2E fakes in ``tests/integration/test_pipeline_e2e.py``: a
 scripted :class:`FakeLLMClient` drives the real agents, a local fake image
 client records every prompt it is asked to generate, and a fake trend source
-keeps the run offline. No FFmpeg is required — the media stages simply skip.
+keeps the run offline. The media stages are disabled explicitly
+(``allow_media=False``) so the test behaves identically with or without FFmpeg
+on ``PATH``.
 """
 
 from __future__ import annotations
@@ -20,9 +22,11 @@ from src.pipeline.stages import build_pipeline
 from src.rerun.controller import Stage
 from src.trends.base import TrendItem, TrendSource
 
-# A valid 1x1 PNG so downstream tooling can decode the "images" if needed.
+# A genuinely valid 1x1 RGB PNG (IHDR/IDAT/IEND, no trailing bytes). The
+# previous hardcoded blob was malformed, which made FFmpeg hang if the media
+# stages ever ran (e.g. on CI, where FFmpeg is installed).
 _PNG_1X1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mM4YWMDAAMQAUEc67SpAAAAAElFTkSuQmCC"
 )
 
 
@@ -140,6 +144,11 @@ def _run(tmp_path: Path, *, scene_count: int, max_scenes: int | None):
         image_client=image_client,
         out_dir=tmp_path / "out",
         max_scenes=max_scenes,
+        # Keep this test deterministic across environments: it only asserts which
+        # image prompts were requested. Without this, media stages are wired
+        # whenever FFmpeg is on PATH (i.e. on CI) and would try to render these
+        # throwaway images.
+        allow_media=False,
         scout=TrendScoutAgent([FakeTrendSource()]),
     )
     state = Orchestrator(stages).run("ai_tech", work_dir=tmp_path)
