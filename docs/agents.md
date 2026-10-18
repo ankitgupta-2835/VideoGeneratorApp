@@ -69,7 +69,8 @@ observable two ways:
 | **Pygmalion** | Visuals / image generation | Pollinations, Stable Horde, stock images (Pexels/Pixabay) | 3.3–3.5 |
 | **Daedalus** | Media / assembly | Captions, motion, FFmpeg assembly, `visual_director`, Short derivation | 3.2, 3.6, 3.9–3.11 |
 | **Icarus** | Hero video / GPU | Hero-video cascade, Colab render job | 3.7, 3.8 |
-| **Janus** | Publishing / SEO | `seo`, `publisher`, checkpoint alerts | 4.x |
+| **Janus** | Publishing / SEO | `seo`, `publisher`, checkpoint alerts | 4.4, 4.5 |
+| **Mnemosyne** | Review / preview | Preview page (side-by-side attempts) | 4.3 |
 | **Vesta** | Revision | `revision_director`, re-run/escalation policy | 2C |
 
 **Conductor** is the coordinating assistant (the main session). The specialists above are the
