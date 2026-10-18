@@ -18,6 +18,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
+from src.errors import ConfigError
+
 __all__ = [
     "Config",
     "ConfigError",
@@ -27,10 +29,6 @@ __all__ = [
     "Voices",
     "load_config",
 ]
-
-
-class ConfigError(Exception):
-    """Raised when configuration is missing, unreadable, or invalid."""
 
 
 # --------------------------------------------------------------------------- #

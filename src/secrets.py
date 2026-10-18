@@ -14,11 +14,9 @@ from typing import Any, Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, SecretStr, ValidationError, model_validator
 
+from src.errors import SecretsError
+
 __all__ = ["Secrets", "SecretsError", "load_secrets"]
-
-
-class SecretsError(Exception):
-    """Raised when required secrets are missing or invalid."""
 
 
 #: LLM provider -> the name of the field that must hold its API key.
