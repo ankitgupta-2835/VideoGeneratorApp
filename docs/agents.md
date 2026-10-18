@@ -57,7 +57,8 @@ observable two ways:
 | Name | Domain | Owns | Example tasks |
 |---|---|---|---|
 | **Conductor** | Orchestration | Plan, split, review diffs, run CI, merge, report | all coordination |
-| **Atlas** | Platform / infrastructure | Scaffold, CI, config, secrets, errors & logging, SQLite store, shared data contracts | 0.1–0.6, 2.4 |
+| **Atlas** | Platform / infrastructure | Scaffold, CI, config, secrets, errors & logging, SQLite store, shared data contracts, deploy | 0.1–0.6, 2.4, 5.5 |
+| **Chronos** | Runtime orchestration / scheduling | Pipeline orchestrator, CLI entrypoint, GitHub Actions daily job | 5.3, 5.4 |
 | **Hermes** | Integrations | HTTP client (retry/cache), LLM client, notifier | 1.1–1.4 |
 | **Pythia** | Trend discovery | Google Trends, Reddit, Hacker News, News RSS, YouTube; `trend_scout` agent | 1.5–1.9, 2.1 |
 | **Argus** | Signals / scoring | Scorer + dedup, retention/CTR weighting (`analyst`) | 1.10, 6.x |
