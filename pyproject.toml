@@ -34,7 +34,8 @@ include = ["src*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# The `live` marker is deselected by default; opt in with `pytest -m live ...`.
+addopts = "-q -m 'not live'"
 markers = [
     "live: hits real external services (opt-in; never runs in CI)",
 ]
