@@ -57,9 +57,9 @@ observable two ways:
 | Name | Domain | Owns | Example tasks |
 |---|---|---|---|
 | **Conductor** | Orchestration | Plan, split, review diffs, run CI, merge, report | all coordination |
-| **Atlas** | Platform / infrastructure | Scaffold, CI, config, secrets, errors & logging, SQLite store, shared data contracts, deploy | 0.1–0.6, 2.4, 5.5 |
-| **Chronos** | Runtime orchestration / scheduling | Pipeline orchestrator, CLI entrypoint, GitHub Actions daily job | 5.3, 5.4 |
-| **Hermes** | Integrations | HTTP client (retry/cache), LLM client, notifier | 1.1–1.4 |
+| **Atlas** | Platform / infrastructure | Scaffold, CI, config, secrets, errors & logging, SQLite store, shared data contracts, deploy | 0.1–0.6, 2.4, 5.5, 5.6 |
+| **Chronos** | Runtime orchestration / scheduling | Pipeline orchestrator, CLI entrypoint, GitHub Actions daily job | 5.3, 5.4, 5.9 |
+| **Hermes** | Integrations | HTTP client (retry/cache), LLM client, notifier, live smoke tests | 1.1–1.4, 5.8 |
 | **Pythia** | Trend discovery | Google Trends, Reddit, Hacker News, News RSS, YouTube; `trend_scout` agent | 1.5–1.9, 2.1 |
 | **Argus** | Signals / scoring | Scorer + dedup, retention/CTR weighting (`analyst`) | 1.10, 6.x |
 | **Melete** | Ideation / research | `angle_strategist`, `research` | 2.2, 2.3 |
@@ -71,8 +71,8 @@ observable two ways:
 | **Daedalus** | Media / assembly | Captions, motion, FFmpeg assembly, `visual_director`, Short derivation | 3.2, 3.6, 3.9–3.11 |
 | **Icarus** | Hero video / GPU | Hero-video cascade, Colab render job | 3.7, 3.8 |
 | **Janus** | Publishing / SEO | `seo`, `publisher`, checkpoint alerts | 4.4, 4.5 |
-| **Mnemosyne** | Review / preview | Preview page (side-by-side attempts) | 4.3 |
-| **Vesta** | Revision | `revision_director`, re-run/escalation policy | 2C |
+| **Mnemosyne** | Review / preview | Preview page (side-by-side attempts), docs | 4.3, 5.7, 6.1 |
+| **Vesta** | Revision | `revision_director`, re-run/escalation policy | 2C, 5.1, 5.2 |
 
 **Conductor** is the coordinating assistant (the main session). The specialists above are the
 subagents it spawns. A specialist may own several tasks over time — that persistence is the
@@ -84,6 +84,19 @@ A running record of who built what, for auditing. Newest first.
 
 | Task | Agent | PR | Status |
 |---|---|---|---|
+| 6.1 Oracle VM demo quickstart docs | Mnemosyne | — | ⏳ |
+| 5.9 Live wiring + demo runner | Chronos | — | ⏳ |
+| 1.20 Phase 5 + demo ledger | Conductor | — | ⏳ |
+| 5.6 End-to-end pipeline wiring | Atlas | #57 | ✅ |
+| 5.8 Live smoke tests + run gating | Hermes | #56 | ✅ |
+| 5.7 README + architecture docs | Mnemosyne | #55 | ✅ |
+| 5.4 Daily scheduler + rotation | Chronos | #54 | ✅ |
+| 5.3 Orchestrator + CLI (dry-run) | Chronos | #53 | ✅ |
+| 5.2 `revision_director` | Vesta | #52 | ✅ |
+| 5.5 Deploy scripts + runbook | Atlas | #51 | ✅ |
+| 5.1 Rerun controller | Vesta | #50 | ✅ |
+| 1.19 Chronos roster | Atlas | #49 | ✅ |
+| 1.18 Phase 4 ledger | Atlas | #48 | ✅ |
 | 4.5 `publisher` (manual default) | Janus | #47 | ✅ |
 | 4.2 `qa_critic` gate | Sentinel | #46 | ✅ |
 | 4.6 `analyst` (metrics → weights) | Argus | #45 | ✅ |
