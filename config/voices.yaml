@@ -1,0 +1,11 @@
+# Narration voices per language (edge-tts). One channel per language.
+
+voices:
+  en:
+    voice: en-US-AriaNeural
+    language_name: English
+    channel: "@YourEnglishChannel"
+  hi:
+    voice: hi-IN-SwaraNeural
+    language_name: Hindi
+    channel: "@YourHindiChannel"

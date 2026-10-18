@@ -1,0 +1,32 @@
+# Topic categories. One category is used per day, in `rotation` order.
+
+rotation:
+  - ai_tech
+  - finance
+  - health_fitness
+  - general_knowledge
+
+categories:
+  ai_tech:
+    display_name: "AI & Tech"
+    youtube_category: "Science & Technology"
+    keywords: ["artificial intelligence", "ai model", "tech launch", "software update"]
+    subreddits: [MachineLearning, LocalLLaMA, technology]
+
+  finance:
+    display_name: "Personal Finance"
+    youtube_category: "Education"
+    keywords: ["stock market", "personal finance", "interest rates", "index funds"]
+    subreddits: [personalfinance, investing, economics]
+
+  health_fitness:
+    display_name: "Health & Fitness"
+    youtube_category: "Howto & Style"
+    keywords: ["fitness", "nutrition", "mental health", "sleep science"]
+    subreddits: [fitness, nutrition, science]
+
+  general_knowledge:
+    display_name: "General Knowledge"
+    youtube_category: "Education"
+    keywords: ["did you know", "explained", "history", "science facts"]
+    subreddits: [todayilearned, explainlikeimfive, InterestingFacts]
