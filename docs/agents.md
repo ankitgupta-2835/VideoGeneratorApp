@@ -65,7 +65,10 @@ observable two ways:
 | **Calliope** | Narrative / script | Blueprint authoring: `scriptwriter`, `script_director` | 2.5, 2.7 |
 | **Polyhymnia** | Localization | Hindi `localizer`, bilingual timing parity | 2.6 |
 | **Sentinel** | Trust & safety | `compliance` gate, `qa_critic` | 2.8, 4.x |
-| **Daedalus** | Media | `voice_director`, `visual_director`, `editor`, Short derivation | 3.x |
+| **Orpheus** | Audio / TTS | `voice_director`, TTS backends, word/scene timestamps | 3.1 |
+| **Pygmalion** | Visuals / image generation | Pollinations, Stable Horde, stock images (Pexels/Pixabay) | 3.3–3.5 |
+| **Daedalus** | Media / assembly | Captions, motion, FFmpeg assembly, `visual_director`, Short derivation | 3.2, 3.6, 3.9–3.11 |
+| **Icarus** | Hero video / GPU | Hero-video cascade, Colab render job | 3.7, 3.8 |
 | **Janus** | Publishing / SEO | `seo`, `publisher`, checkpoint alerts | 4.x |
 | **Vesta** | Revision | `revision_director`, re-run/escalation policy | 2C |
 
