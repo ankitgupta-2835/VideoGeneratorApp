@@ -18,11 +18,12 @@ the assembly/short stages are exercised for real against generated clips.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
+import math
 import shutil
 import struct
+import zlib
 from pathlib import Path
 
 import pytest
@@ -53,15 +54,42 @@ _CONTENT_STAGES = [
 ]
 _MEDIA_STAGES = [Stage.MOTION, Stage.ASSEMBLE, Stage.SHORT]
 
-# A valid 1x1 PNG (70 bytes) so FFmpeg can decode the generated "images".
-_PNG_1X1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
-)
-
 
 # --------------------------------------------------------------------------- #
 # fakes
 # --------------------------------------------------------------------------- #
+def _png_bytes(
+    width: int = 64, height: int = 36, rgb: tuple[int, int, int] = (200, 60, 60)
+) -> bytes:
+    """Build a small, valid 8-bit RGB PNG without any image dependency.
+
+    FFmpeg on CI must actually decode these "images", so we emit a real PNG
+    (IHDR/IDAT/IEND) rather than opaque bytes. Any leading ``0`` byte per row is
+    the PNG filter type (none).
+    """
+    raw = bytearray()
+    for _ in range(height):
+        raw.append(0)
+        raw.extend(bytes(rgb) * width)
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return (
+            struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+        )
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+_PNG_BYTES = _png_bytes()
+
+
 class FakeTrendSource(TrendSource):
     """A single deterministic candidate topic (no network)."""
 
@@ -96,14 +124,23 @@ class FakeImageClient:
     ) -> Path:
         digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
         path = self._out_dir / f"img_{digest}.png"
-        path.write_bytes(_PNG_1X1)
+        path.write_bytes(_PNG_BYTES)
         return path
 
 
-def _wav_silence(seconds: float = 2.0, rate: int = 8000) -> bytes:
-    """Return a mono 16-bit PCM WAV of silence (a tiny *real* audio file)."""
+def _wav_tone(seconds: float = 2.0, rate: int = 8000, freq: float = 440.0) -> bytes:
+    """Return a mono 16-bit PCM WAV holding a quiet sine tone.
+
+    A tiny *real* audio file is needed so real FFmpeg (on CI) can mix it. It
+    must not be pure digital silence: the assembly stage's ``loudnorm`` filter
+    yields NaN on silence, which makes the AAC encoder reject the frame.
+    """
     frames = int(seconds * rate)
-    data = b"\x00\x00" * frames
+    samples = bytearray()
+    for i in range(frames):
+        value = int(0.2 * 32767 * math.sin(2 * math.pi * freq * i / rate))
+        samples += struct.pack("<h", value)
+    data = bytes(samples)
     header = (
         b"RIFF"
         + struct.pack("<I", 36 + len(data))
@@ -115,17 +152,17 @@ def _wav_silence(seconds: float = 2.0, rate: int = 8000) -> bytes:
     return header + data
 
 
-class SilentWavTTSBackend(FakeTTSBackend):
+class ToneWavTTSBackend(FakeTTSBackend):
     """A :class:`FakeTTSBackend` whose output is real audio, not text.
 
     The base backend writes narration text into ``narration.mp3``; real FFmpeg
     (on CI) cannot mix that. We keep the deterministic synthetic word timings
-    but overwrite the file with a valid silent WAV so assembly can run.
+    but overwrite the file with a valid, non-silent WAV so assembly can run.
     """
 
     def synthesize(self, text: str, *, voice: str, out_path: Path) -> list[WordTiming]:
         timings = super().synthesize(text, voice=voice, out_path=out_path)
-        out_path.write_bytes(_wav_silence())
+        out_path.write_bytes(_wav_tone())
         return timings
 
 
@@ -224,7 +261,7 @@ def _run(tmp_path: Path, notifier: FakeNotifier, store: Database):
         llm=FakeLLMClient(_replies()),
         notifier=notifier,
         store=store,
-        tts_backend=SilentWavTTSBackend(),
+        tts_backend=ToneWavTTSBackend(),
         image_client=FakeImageClient(tmp_path / "images"),
         out_dir=tmp_path / "out",
         run_checks_fn=_clean_checks,
