@@ -83,6 +83,14 @@ A running record of who built what, for auditing. Newest first.
 
 | Task | Agent | PR | Status |
 |---|---|---|---|
+| 4.5 `publisher` (manual default) | Janus | #47 | ✅ |
+| 4.2 `qa_critic` gate | Sentinel | #46 | ✅ |
+| 4.6 `analyst` (metrics → weights) | Argus | #45 | ✅ |
+| 4.4 `seo` (title/desc/tags) | Janus | #44 | ✅ |
+| 4.3 Preview page | Mnemosyne | #43 | ✅ |
+| 4.1 Technical QA checks | Sentinel | #42 | ✅ |
+| 1.17 Mnemosyne roster | Atlas | #41 | ✅ |
+| 1.16 Phase 3 ledger | Atlas | #40 | ✅ |
 | 3.11 `short_deriver` (9:16) | Daedalus | #39 | ✅ |
 | 3.9 `visual_director` | Daedalus | #38 | ✅ |
 | 3.10 FFmpeg assembly | Daedalus | #37 | ✅ |
