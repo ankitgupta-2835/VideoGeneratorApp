@@ -16,6 +16,9 @@ dependencies = [
     "pydantic>=2.6",
 ]
 
+[project.scripts]
+videogen = "src.pipeline.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
