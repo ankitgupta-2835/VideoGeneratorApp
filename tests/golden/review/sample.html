@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video attempts</title>
+<style>
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 1.5rem;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #f5f6f8;
+  color: #1b1f24;
+}
+h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+.cards { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+.card {
+  flex: 1 1 420px;
+  max-width: 640px;
+  background: #ffffff;
+  border: 1px solid #d7dbe0;
+  border-radius: 10px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.card h2 { font-size: 1.15rem; margin: 0 0 0.5rem; }
+.meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0 0 0.75rem; }
+.meta dt { font-weight: 600; color: #57606a; }
+.meta dd { margin: 0; }
+.meta > div { display: flex; gap: 0.35rem; }
+.status { text-transform: capitalize; }
+.notes { margin: 0 0 0.75rem; white-space: pre-wrap; }
+video { display: block; width: 100%; margin-top: 0.5rem; background: #000; border-radius: 6px; }
+.label { font-size: 0.8rem; font-weight: 600; color: #57606a; margin-top: 0.75rem; }
+.empty { color: #57606a; }
+</style>
+</head>
+<body>
+<h1>Video attempts</h1>
+<div class="cards">
+<article class="card">
+<h2>The fall of Rome</h2>
+<dl class="meta">
+<div><dt>Category</dt><dd>history</dd></div>
+<div><dt>Run</dt><dd>run-001 #1</dd></div>
+<div><dt>Score</dt><dd>—</dd></div>
+<div><dt>Status</dt><dd class="status">pending</dd></div>
+</dl>
+<p class="notes"></p>
+<div class="label">Long video</div>
+<video controls preload="metadata"><source src="videos/run-001/attempt-1.mp4" type="video/mp4">Your browser does not support the video tag (videos/run-001/attempt-1.mp4).</video>
+</article>
+<article class="card">
+<h2>Why the sky is blue</h2>
+<dl class="meta">
+<div><dt>Category</dt><dd>science</dd></div>
+<div><dt>Run</dt><dd>run-002 #2</dd></div>
+<div><dt>Score</dt><dd>8.50</dd></div>
+<div><dt>Status</dt><dd class="status">approved</dd></div>
+</dl>
+<p class="notes">Tight pacing; strong hook.</p>
+<div class="label">Long video</div>
+<video controls preload="metadata"><source src="videos/run-002/attempt-2.mp4" type="video/mp4">Your browser does not support the video tag (videos/run-002/attempt-2.mp4).</video>
+<div class="label">Short video</div>
+<video controls preload="metadata"><source src="videos/run-002/attempt-2-short.mp4" type="video/mp4">Your browser does not support the video tag (videos/run-002/attempt-2-short.mp4).</video>
+</article>
+</div>
+</body>
+</html>
