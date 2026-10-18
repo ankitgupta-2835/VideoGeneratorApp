@@ -1,0 +1,32 @@
+# VideoGeneratorApp — daily batch schedule (UTC).
+#
+# Crontab environment does NOT expand $HOME; the lines below rely on the
+# `HOME` variable cron sets for your user. Install with `crontab -e`.
+#
+# The pipeline contract is:
+#   python -m src.pipeline --category <ai_tech|finance|health_fitness|general_knowledge>
+#
+# ---------------------------------------------------------------------------
+# Category rotation
+# ---------------------------------------------------------------------------
+# The batch should cover one of the four categories per day (4-day rotation):
+#   ai_tech -> finance -> health_fitness -> general_knowledge -> (repeat)
+#
+# Easiest option: use a small rotation script that picks the category from the
+# day of year and shells out to the pipeline, then cron calls that script:
+#
+#   30 2 * * * cd "$HOME/VideoGeneratorApp" && .venv/bin/python deploy/oracle/rotate.py >> "$HOME/videogen.log" 2>&1
+#
+# If you prefer to stay cron-only, use FOUR staggered lines — one per category,
+# each firing every 4 days on a different weekday (01:00 UTC = 06:30 IST),
+# so exactly one category runs per day:
+#
+#   30 2 * * 0 cd "$HOME/VideoGeneratorApp" && .venv/bin/python -m src.pipeline --category ai_tech       >> "$HOME/videogen.log" 2>&1
+#   30 2 * * 1 cd "$HOME/VideoGeneratorApp" && .venv/bin/python -m src.pipeline --category finance        >> "$HOME/videogen.log" 2>&1
+#   30 2 * * 2 cd "$HOME/VideoGeneratorApp" && .venv/bin/python -m src.pipeline --category health_fitness >> "$HOME/videogen.log" 2>&1
+#   30 2 * * 3 cd "$HOME/VideoGeneratorApp" && .venv/bin/python -m src.pipeline --category general_knowledge        >> "$HOME/videogen.log" 2>&1
+#
+# ---------------------------------------------------------------------------
+# Single-line example (fixed category) — adjust the category as needed.
+# ---------------------------------------------------------------------------
+30 2 * * * cd "$HOME/VideoGeneratorApp" && .venv/bin/python -m src.pipeline --category ai_tech >> "$HOME/videogen.log" 2>&1
