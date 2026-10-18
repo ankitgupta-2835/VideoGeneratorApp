@@ -1,0 +1,28 @@
+# Global settings. Env vars (.env) override operating mode in a later task.
+
+paths:
+  output_dir: data/output
+  assets_dir: data/assets
+  db_path: data/history.db
+
+video:
+  long:
+    aspect_ratio: "16:9"
+    target_duration_sec: 270      # ~4.5 min
+    min_duration_sec: 240
+    max_duration_sec: 330
+    fps: 30
+  short:
+    aspect_ratio: "9:16"
+    max_duration_sec: 180         # YouTube Shorts hard limit
+    fps: 30
+
+languages:
+  - en
+  - hi
+
+schedule_time: "07:00"            # daily run time (IST)
+autonomy: full                    # full | exception_only | review
+publish_mode: manual              # manual | auto
+auto_rerun: false
+max_attempts: 3
