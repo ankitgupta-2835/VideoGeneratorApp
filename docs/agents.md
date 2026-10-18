@@ -26,6 +26,32 @@ scope, and held to a consistent standard over time.
 - **One agent, one worktree, one branch** — agents never share a checkout; the Conductor reviews
   each diff, runs CI, and merges centrally (the only serialized step).
 
+## Observability (watching an agent work)
+
+Background subagents only return their full report when they finish, so their activity is made
+observable two ways:
+
+1. **Progress journal (live).** Each agent appends timestamped, one-line entries to an
+   append-only journal *outside* the repo (never committed):
+
+   ```
+   /tmp/opencode/journals/<agent>-<task>.log
+   ```
+
+   The Conductor relays `tail` snapshots so progress is visible while the work is in flight.
+
+2. **Worktree snapshot (on demand).** Because an agent works in an isolated worktree, its state
+   is directly inspectable at any moment:
+
+   ```bash
+   git -C /tmp/opencode/wt/<task> status --short    # files created/changed so far
+   git -C /tmp/opencode/wt/<task> diff --stat       # size of the change so far
+   tail /tmp/opencode/journals/<agent>-<task>.log   # the agent's own log
+   ```
+
+   A clean tree with a single signed commit means the agent finished and staged only what it
+   intended.
+
 ## The roster
 
 | Name | Domain | Owns | Example tasks |
@@ -53,7 +79,10 @@ A running record of who built what, for auditing.
 
 | Task | Agent | PR | Status |
 |---|---|---|---|
-| 1.11 | Atlas | — | this file |
+| 1.11 | Atlas | #16 | ✅ |
+| 1.12 | Atlas | — | this section |
+| 2.1 | Pythia | #17 | ✅ |
+| 2.4 | Atlas | #18 | ✅ |
 | 1.8 | Pythia | #15 | ✅ |
 | 1.9 | Pythia | #13 | ✅ |
 | 1.10 | Argus | #14 | ✅ |
