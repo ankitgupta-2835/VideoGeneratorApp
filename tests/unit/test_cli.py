@@ -28,13 +28,29 @@ def test_invalid_category_rejected_by_argparse(capsys):
     assert "invalid choice" in capsys.readouterr().err
 
 
-def test_non_dry_run_is_not_yet_wired(capsys):
-    code = main(["--category", "ai_tech"])
+def test_live_run_uses_injected_builder(tmp_path: Path, capsys):
+    """Non-dry-run now runs the live path via the (injectable) builder."""
+    from types import SimpleNamespace
+
+    from src.pipeline.orchestrator import build_dry_run_stages
+
+    calls: list[dict[str, object]] = []
+
+    def builder(**kwargs: object):
+        calls.append(kwargs)
+        return build_dry_run_stages()
+
+    code = main(
+        ["--category", "ai_tech", "--work-dir", str(tmp_path)],
+        live_builder=builder,
+        secrets_loader=lambda: SimpleNamespace(),
+        config_loader=lambda: SimpleNamespace(settings=SimpleNamespace()),
+    )
 
     out = capsys.readouterr().out
-    assert code == 1
-    assert "not yet wired" in out
-    assert "5.6" in out
+    assert code == 0
+    assert calls and calls[0]["demo"] is False
+    assert "status: ok" in out
 
 
 def test_language_hi_is_accepted(tmp_path: Path):

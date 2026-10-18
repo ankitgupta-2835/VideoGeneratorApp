@@ -133,6 +133,7 @@ class Pipeline:
         min_score: float = 70.0,
         dry_run: bool = True,
         allow_media: bool | None = None,
+        max_scenes: int | None = None,
         target_duration_sec: int = 270,
         min_duration_sec: int = 240,
         max_duration_sec: int = 330,
@@ -157,6 +158,7 @@ class Pipeline:
         self._voices = {**_DEFAULT_VOICES, **(voices or {})}
         self._min_score = min_score
         self._dry_run = dry_run
+        self._max_scenes = max_scenes if (max_scenes is not None and max_scenes > 0) else None
         self._target_duration_sec = target_duration_sec
         self._min_duration_sec = min_duration_sec
         self._max_duration_sec = max_duration_sec
@@ -286,8 +288,24 @@ class Pipeline:
         if result.status != "ok":
             return self._agent_result(result)
         blueprint = result.data
+        blueprint = self._truncate_blueprint(blueprint)
         self._bag[Stage.SCRIPT] = blueprint
         return self._agent_result(result, artifact=blueprint.meta.title)
+
+    def _truncate_blueprint(self, blueprint: Blueprint) -> Blueprint:
+        """Cap the blueprint to ``max_scenes`` (deterministic: keep the first N).
+
+        ``max_scenes`` is an optional, additive knob used by the bounded demo
+        runner. When set (and positive), only the first ``max_scenes`` scenes
+        are kept — their original ``index`` values are preserved and no scene
+        is reordered or rewritten — so downstream stages (compliance, visuals,
+        assembly, Shorts) all operate on the same, smaller blueprint. ``None``
+        (the default) leaves the blueprint untouched.
+        """
+        limit = self._max_scenes
+        if limit is None or len(blueprint.scenes) <= limit:
+            return blueprint
+        return blueprint.model_copy(update={"scenes": blueprint.scenes[:limit]})
 
     def _stage_localize(self, ctx: RunContext) -> StageResult:
         source = self._bag[Stage.SCRIPT]
@@ -552,6 +570,7 @@ def build_pipeline(
     http: Any = None,
     out_dir: Path,
     run_checks_fn: Callable[[Path], QaChecks] = run_checks,
+    max_scenes: int | None = None,
     **kw: Any,
 ) -> dict[Stage, StageFn]:
     """Wire the real agents into ``{Stage: StageFn}`` for the orchestrator.
@@ -559,9 +578,11 @@ def build_pipeline(
     Missing dependencies cause the corresponding stage to be **omitted** (the
     orchestrator records it ``skipped``) rather than faked. See the module
     docstring for the full omission table. ``out_dir`` is the per-run directory
-    for every produced artifact. All extra keyword arguments (``scout``,
-    ``trend_sources``, ``motion_renderer``, ``voices``, durations,
-    ``dry_run``, ...) are forwarded to :class:`Pipeline`.
+    for every produced artifact. ``max_scenes`` caps the blueprint to its first
+    N scenes as the SCRIPT stage produces it (used by the bounded demo runner).
+    All extra keyword arguments (``scout``, ``trend_sources``,
+    ``motion_renderer``, ``voices``, durations, ``dry_run``, ...) are forwarded
+    to :class:`Pipeline`.
     """
     return Pipeline(
         llm=llm,
@@ -574,5 +595,6 @@ def build_pipeline(
         http=http,
         out_dir=out_dir,
         run_checks_fn=run_checks_fn,
+        max_scenes=max_scenes,
         **kw,
     ).stages()
