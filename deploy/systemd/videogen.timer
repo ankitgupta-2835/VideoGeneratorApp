@@ -1,0 +1,12 @@
+[Unit]
+# Daily trigger for videogen.service (systemd alternative to cron).
+# 02:30 UTC == 08:00 IST. Persistent=true catches up a missed run after reboot.
+Description=Run the VideoGeneratorApp batch daily
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+Unit=videogen.service
+
+[Install]
+WantedBy=timers.target

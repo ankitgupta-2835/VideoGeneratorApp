@@ -1,0 +1,29 @@
+[Unit]
+# VideoGeneratorApp daily batch (systemd alternative to cron).
+# Runs the pipeline once per invocation for one category. Category rotation is
+# documented in docs/deploy.md §Scheduling; adjust --category or point
+# ExecStart at a rotation wrapper script if you want automatic cycling.
+Description=VideoGeneratorApp daily video batch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as your login user (scaffold install lives under $HOME).
+# Replace `%u` with a literal username if you prefer, or hard-code the paths.
+User=%u
+WorkingDirectory=%h/VideoGeneratorApp
+# The pipeline is invoked exactly as documented:
+#   python -m src.pipeline --category <ai_tech|finance|health_fitness|general_knowledge>
+ExecStart=%h/VideoGeneratorApp/.venv/bin/python -m src.pipeline --category ai_tech
+# Secrets are read by the app itself from ./.env (python-dotenv), so no
+# EnvironmentFile is needed. If you prefer to inject them via systemd, first
+# strip the inline `# ...` comments from .env, then uncomment:
+# EnvironmentFile=-%h/VideoGeneratorApp/.env
+# Reap anything the pipeline spawns.
+KillMode=control-group
+# Give a long render/upload window before giving up.
+TimeoutStartSec=5400
+
+[Install]
+WantedBy=multi-user.target
