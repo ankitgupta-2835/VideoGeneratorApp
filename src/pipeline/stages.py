@@ -483,11 +483,15 @@ class Pipeline:
         result = agent.run(
             QaInput(blueprint=blueprint, video_path=video_path, min_score=self._min_score)
         )
-        if result.status != "ok" or not result.data.passed:
-            return StageResult(
-                status="fail",
-                notes=[*result.notes, "QA gate not passed"],
-            )
+        if result.status != "ok" or result.data is None or not result.data.passed:
+            notes = list(result.notes)
+            report = result.data
+            if report is not None:
+                notes.append(f"QA score {report.score:.1f} (minimum {self._min_score:.0f})")
+                notes.extend(f"technical: {issue}" for issue in report.technical_issues)
+                notes.extend(f"critique: {critique}" for critique in report.critiques)
+            notes.append("QA gate not passed")
+            return StageResult(status="fail", notes=notes)
         self._bag[Stage.QA] = result.data
         return self._agent_result(result, artifact=f"score={result.data.score:.1f}")
 
