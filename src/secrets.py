@@ -24,17 +24,22 @@ _PROVIDER_KEY_FIELD: dict[str, str] = {
     "gemini": "gemini_api_key",
     "groq": "groq_api_key",
     "openrouter": "openrouter_api_key",
+    "openai": "openai_api_key",
 }
 
 
 class Secrets(BaseModel):
     # LLM
-    llm_provider: Literal["gemini", "groq", "openrouter"] = "gemini"
+    llm_provider: Literal["gemini", "groq", "openrouter", "openai"] = "gemini"
     # Optional model override (env ``LLM_MODEL``); blank uses the provider default.
     llm_model: str | None = None
+    # Base URL for any OpenAI-compatible endpoint (env ``LLM_BASE_URL``):
+    # Groq/Cerebras/GitHub Models/Together, or a local vLLM/Ollama server.
+    llm_base_url: str | None = None
     gemini_api_key: SecretStr | None = None
     groq_api_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
+    openai_api_key: SecretStr | None = None
 
     # Alerts
     telegram_bot_token: SecretStr | None = None
@@ -61,6 +66,11 @@ class Secrets(BaseModel):
         field = _PROVIDER_KEY_FIELD[self.llm_provider]
         if getattr(self, field) is None:
             raise ValueError(f"LLM_PROVIDER={self.llm_provider} requires {field.upper()} to be set")
+        if self.llm_provider == "openai":
+            if not self.llm_base_url:
+                raise ValueError("LLM_PROVIDER=openai requires LLM_BASE_URL to be set")
+            if not self.llm_model:
+                raise ValueError("LLM_PROVIDER=openai requires LLM_MODEL to be set")
         return self
 
 

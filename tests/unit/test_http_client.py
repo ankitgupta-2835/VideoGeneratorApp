@@ -206,3 +206,15 @@ def test_http_timeout_env_override(monkeypatch: pytest.MonkeyPatch):
         assert client._client.timeout.read == 7.5
     finally:
         client.close()
+
+
+def test_503_backoff_waits_for_the_spike_to_pass():
+    """A "high demand" 503 needs seconds, not sub-second retries."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": {"message": "high demand"}})
+
+    client, sleeps = make_client(handler, max_retries=2)
+    with pytest.raises(ProviderError):
+        client.get_json("https://api.test/x")
+    assert sleeps and all(s >= 5.0 for s in sleeps)
