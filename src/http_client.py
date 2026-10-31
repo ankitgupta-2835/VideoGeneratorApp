@@ -102,7 +102,12 @@ class HttpClient:
                 return float(retry_after)
             except ValueError:
                 pass
-        return self.backoff_base * (2**attempt)
+        delay = self.backoff_base * (2**attempt)
+        if resp.status_code == 503:
+            # "High demand" spikes last seconds-to-minutes; a sub-second retry
+            # just burns the attempt budget.
+            delay = max(delay, 5.0)
+        return delay
 
     def _request(
         self,

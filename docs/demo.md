@@ -92,6 +92,7 @@ matching key must be set; the supported free options are:
 | `gemini` (default) | `GEMINI_API_KEY` | Google AI Studio (Gemini API) |
 | `groq` | `GROQ_API_KEY` | Groq Cloud console |
 | `openrouter` | `OPENROUTER_API_KEY` | OpenRouter (free `:free` models) |
+| `openai` | `OPENAI_API_KEY` + `LLM_BASE_URL` + `LLM_MODEL` | any OpenAI-compatible endpoint — Cerebras, GitHub Models, or a **local** vLLM/Ollama server ([guide](local-llm.md)) |
 
 Example (Gemini):
 
@@ -243,6 +244,7 @@ Be honest about the free tier before you scale up:
 
 - [`deploy.md`](deploy.md) — full Oracle VM + Colab + scheduling runbook.
 - [`architecture.md`](architecture.md) — stages, gates, re-runs, free-tier split.
+- [`local-llm.md`](local-llm.md) — use Groq/Cerebras/GitHub Models or a local vLLM model.
 - [`live-testing.md`](live-testing.md) — opt-in live tests and rate-limit notes.
 - [`../README.md`](../README.md) — project overview and Quickstart.
 - [`../.github/workflows/daily.yml`](../.github/workflows/daily.yml) — the scheduled daily run.

@@ -11,6 +11,7 @@ from src.llm.client import (
     FakeLLMClient,
     GeminiClient,
     GroqClient,
+    OpenAICompatibleClient,
     OpenRouterClient,
     build_llm_client,
     parse_json,
@@ -128,3 +129,18 @@ def test_gemini_default_model_is_a_floating_alias():
     from src.llm.client import DEFAULT_MODELS
 
     assert DEFAULT_MODELS["gemini"].endswith("-latest")
+
+
+def test_build_openai_compatible_client_uses_base_url():
+    """`LLM_PROVIDER=openai` targets any OpenAI-compatible endpoint (local vLLM,
+    Ollama, Cerebras, GitHub Models, ...)."""
+    secrets = Secrets(
+        llm_provider="openai",
+        openai_api_key="k",
+        llm_base_url="http://localhost:8000/v1",
+        llm_model="qwen2.5-7b-instruct",
+    )
+    client = build_llm_client(secrets, http=object())
+    assert isinstance(client, OpenAICompatibleClient)
+    assert client._url == "http://localhost:8000/v1/chat/completions"
+    assert client.model == "qwen2.5-7b-instruct"

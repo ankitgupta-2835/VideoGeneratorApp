@@ -229,4 +229,9 @@ def build_llm_client(
         return GroqClient(http, key, model or DEFAULT_MODELS["groq"])
     if provider == "openrouter":
         return OpenRouterClient(http, key, model or DEFAULT_MODELS["openrouter"])
+    if provider == "openai":
+        # Any OpenAI-compatible endpoint: cloud (Cerebras, GitHub Models, ...)
+        # or a self-hosted server (vLLM, Ollama, LM Studio). Validated in
+        # Secrets, so base_url and model are present.
+        return OpenAICompatibleClient(http, key, model or "", secrets.llm_base_url or "")
     raise ProviderError(f"unknown LLM provider: {provider}")

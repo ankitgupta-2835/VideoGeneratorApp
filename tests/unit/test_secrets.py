@@ -65,3 +65,31 @@ def test_llm_model_defaults_to_none(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("LLM_MODEL", raising=False)
     secrets = load_secrets(MISSING_ENV)
     assert secrets.llm_model is None
+
+
+def test_openai_provider_requires_base_url(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    with pytest.raises(SecretsError, match="LLM_BASE_URL"):
+        load_secrets(MISSING_ENV)
+
+
+def test_openai_provider_requires_model(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("LLM_BASE_URL", "http://localhost:8000/v1")
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    with pytest.raises(SecretsError, match="LLM_MODEL"):
+        load_secrets(MISSING_ENV)
+
+
+def test_openai_provider_loads_endpoint(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("LLM_BASE_URL", "http://localhost:8000/v1")
+    monkeypatch.setenv("LLM_MODEL", "qwen2.5-7b-instruct")
+    secrets = load_secrets(MISSING_ENV)
+    assert secrets.llm_base_url == "http://localhost:8000/v1"
+    assert secrets.llm_model == "qwen2.5-7b-instruct"
