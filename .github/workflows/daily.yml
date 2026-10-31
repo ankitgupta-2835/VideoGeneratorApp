@@ -1,85 +1,238 @@
-name: Daily pipeline
+name: Daily video
+
+# The no-card "brain": GitHub Actions runs the whole CPU pipeline (agents, TTS,
+# FFmpeg, assembly) and publishes the videos. Kaggle/Colab stay optional GPU
+# workers for hero clips. See docs/actions.md for setup.
 
 on:
   schedule:
-    # 02:30 UTC every day; the date drives the category rotation.
-    - cron: "30 2 * * *"
+    # 01:30 UTC = 07:00 IST, matching config/settings.yaml `schedule_time`.
+    # GitHub cron is UTC and may start a few minutes late at peak times.
+    - cron: "30 1 * * *"
   workflow_dispatch:
     inputs:
-      category:
-        description: "Topic category to run (auto = today's rotation)"
+      mode:
+        description: "dry-run (no keys), demo (bounded live), or full (production)"
         type: choice
-        options:
-          - auto
-          - ai_tech
-          - finance
-          - health_fitness
-          - general_knowledge
+        options: [dry-run, demo, full]
+        default: demo
+      category:
+        description: "Category; auto uses the date rotation"
+        type: choice
+        options: [auto, ai_tech, finance, health_fitness, general_knowledge]
         default: auto
-      dry_run:
-        description: "Run the pipeline in dry-run mode (no external calls)"
-        type: boolean
-        default: true
+      languages:
+        description: "Languages for a full run (demo always uses en)"
+        type: choice
+        options: [both, en, hi]
+        default: en
+      max_scenes:
+        description: "Scene cap for demo mode"
+        type: string
+        default: "6"
 
-# Never let two daily runs overlap; keep the current one running instead.
+permissions:
+  contents: write
+
+# Never let two runs edit the state cache / releases at the same time.
 concurrency:
-  group: daily-pipeline
+  group: daily-video
   cancel-in-progress: false
 
 jobs:
-  daily:
+  render:
     runs-on: ubuntu-latest
+    timeout-minutes: 240
     env:
-      LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+      PYTHONUNBUFFERED: "1"
+      # Repository variables (Settings -> Secrets and variables -> Actions ->
+      # Variables). LLM_PROVIDER defaults to gemini; set it to groq,
+      # openrouter, or openai to switch providers.
+      LLM_PROVIDER: ${{ vars.LLM_PROVIDER || secrets.LLM_PROVIDER || 'gemini' }}
+      LLM_MODEL: ${{ vars.LLM_MODEL || secrets.LLM_MODEL }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL || secrets.LLM_BASE_URL }}
+      HTTP_TIMEOUT: ${{ vars.HTTP_TIMEOUT || secrets.HTTP_TIMEOUT || '90' }}
+      # Repository secrets. Missing values are empty strings and are treated as
+      # unset by src/secrets.py.
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      ALERT_WEBHOOK: ${{ secrets.ALERT_WEBHOOK }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-      YOUTUBE_CLIENT_SECRET_EN: ${{ secrets.YOUTUBE_CLIENT_SECRET_EN }}
-      YOUTUBE_CLIENT_SECRET_HI: ${{ secrets.YOUTUBE_CLIENT_SECRET_HI }}
+      POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
 
-      - name: Install
+      - name: Install system tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg zip
+
+      - name: Install package
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e . "edge-tts>=7.0"
 
-      - name: Install system tools (ffmpeg)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # Persist the SQLite history (topic dedupe, run/attempt bookkeeping) and
+      # the provider/HTTP cache across runs. The key is unique per run so the
+      # next run restores the most recent cache; old entries age out.
+      - name: Restore pipeline state
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/history.db
+            data/assets/cache
+          key: videogen-state-${{ github.run_id }}
+          restore-keys: |
+            videogen-state-
 
-      - name: Resolve category
-        id: category
-        env:
-          INPUT_CATEGORY: ${{ github.event.inputs.category || 'auto' }}
+      - name: Resolve today's run
+        id: meta
+        shell: bash
         run: |
-          if [ -z "$INPUT_CATEGORY" ] || [ "$INPUT_CATEGORY" = "auto" ]; then
-            CATEGORY="$(python -m src.pipeline.schedule)"
+          set -euo pipefail
+          mode="${{ github.event.inputs.mode || 'full' }}"
+          category_input="${{ github.event.inputs.category || 'auto' }}"
+          languages_input="${{ github.event.inputs.languages || 'both' }}"
+          max_scenes="${{ github.event.inputs.max_scenes || '6' }}"
+
+          if [ "$category_input" = "auto" ]; then
+            category="$(python -m src.pipeline.schedule)"
           else
-            CATEGORY="$INPUT_CATEGORY"
+            category="$category_input"
           fi
-          echo "category=$CATEGORY" >> "$GITHUB_OUTPUT"
-          echo "Resolved category: $CATEGORY"
+
+          if [ "$mode" = "demo" ] || [ "$mode" = "dry-run" ]; then
+            # --demo / --dry-run are bounded smoke tests; English is enough.
+            languages="en"
+          elif [ "$languages_input" = "both" ]; then
+            languages="en hi"
+          else
+            languages="$languages_input"
+          fi
+
+          {
+            echo "mode=$mode"
+            echo "category=$category"
+            echo "languages=$languages"
+            echo "max_scenes=$max_scenes"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Run: mode=$mode category=$category languages=$languages"
 
       - name: Run pipeline
-        env:
-          CATEGORY: ${{ steps.category.outputs.category }}
-          # Non-empty (=> --dry-run) unless a manual dispatch explicitly asks
-          # for a live run (dry_run=false). Scheduled runs default to dry-run.
-          DRY_RUN: ${{ (github.event.inputs.dry_run == 'false') && '' || 'true' }}
-        run: python -m src.pipeline --category "$CATEGORY" ${DRY_RUN:+--dry-run}
+        shell: bash
+        run: |
+          set -o pipefail
+          status=0
+          : > pipeline.log
+          for lang in ${{ steps.meta.outputs.languages }}; do
+            echo "=== ${{ steps.meta.outputs.mode }} | ${{ steps.meta.outputs.category }} | $lang ===" | tee -a pipeline.log
+            args=(--category "${{ steps.meta.outputs.category }}" --language "$lang")
+            if [ "${{ steps.meta.outputs.mode }}" = "demo" ]; then
+              args+=(--demo --max-scenes "${{ steps.meta.outputs.max_scenes }}")
+            elif [ "${{ steps.meta.outputs.mode }}" = "dry-run" ]; then
+              args+=(--dry-run)
+            fi
+            if ! python -m src.pipeline "${args[@]}" 2>&1 | tee -a pipeline.log; then
+              status=1
+            fi
+          done
+          exit "$status"
 
-      - name: Upload run artifacts
+      - name: Upload review bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: runs
-          path: runs/**
+          name: videogen-run-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            pipeline.log
+            runs/**/review.html
+            runs/**/manifest.json
+            runs/**/captions/captions.srt
+            runs/**/audio/narration.mp3
           if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publish videos to a GitHub Release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          mkdir -p release
+
+          videos=0
+          for f in runs/**/video.mp4 runs/**/short.mp4; do
+            name="${f#runs/}"
+            name="${name//\//_}"
+            cp "$f" "release/$name"
+            videos=$((videos + 1))
+          done
+
+          if [ "$videos" -eq 0 ]; then
+            echo "No videos were produced; skipping the release."
+            exit 0
+          fi
+
+          # One zip keeps review.html next to the media; the individual MP4s
+          # are attached too for quick download/viewing.
+          zip -qr "release/videogen-run-${{ github.run_number }}.zip" runs pipeline.log
+
+          tag="run-${{ github.run_number }}"
+          notes=$(cat <<EOF
+          Automated VideoGeneratorApp run.
+
+          - Category: ${{ steps.meta.outputs.category }}
+          - Mode: ${{ steps.meta.outputs.mode }}
+          - Languages: ${{ steps.meta.outputs.languages }}
+          - Status: ${{ job.status }}
+          - Commit: ${{ github.sha }}
+          - Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Download the zip and open runs/<run_id>/review.html, or download an individual MP4.
+          EOF
+          )
+
+          gh release create "$tag" release/* \
+            --title "Video run #${{ github.run_number }} — ${{ steps.meta.outputs.category }}" \
+            --notes "$notes" \
+            || gh release upload "$tag" release/* --clobber
+
+      - name: Write job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Video run #${{ github.run_number }}"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Category | \`${{ steps.meta.outputs.category }}\` |"
+            echo "| Mode | \`${{ steps.meta.outputs.mode }}\` |"
+            echo "| Languages | \`${{ steps.meta.outputs.languages }}\` |"
+            echo "| Status | \`${{ job.status }}\` |"
+            echo "| Outputs | Artifacts tab + Releases (\`run-${{ github.run_number }}\`) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Alert on failure
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        run: |
+          python -m src.notify "FAILED: VideoGeneratorApp ${{ steps.meta.outputs.mode }} run for ${{ steps.meta.outputs.category }} (${{ steps.meta.outputs.languages }}) — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

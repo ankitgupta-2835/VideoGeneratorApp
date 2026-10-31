@@ -84,7 +84,8 @@ A running record of who built what, for auditing. Newest first.
 
 | Task | Agent | PR | Status |
 |---|---|---|---|
-| 6.1 Oracle VM demo quickstart docs | Mnemosyne | — | ⏳ |
+| 5.26 GitHub Actions host (no card) | Atlas | — | ⏳ |
+| 6.1 GitHub Actions demo quickstart docs | Mnemosyne | — | ⏳ |
 | 5.9 Live wiring + demo runner | Chronos | — | ⏳ |
 | 1.20 Phase 5 + demo ledger | Conductor | — | ⏳ |
 | 5.6 End-to-end pipeline wiring | Atlas | #57 | ✅ |

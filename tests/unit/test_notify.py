@@ -11,6 +11,7 @@ from src.notify import (
     TelegramNotifier,
     build_notifier,
     checkpoint_text,
+    main,
 )
 from src.secrets import Secrets
 
@@ -65,3 +66,51 @@ def test_build_notifier_without_token_is_noop():
 def test_build_notifier_with_token_is_telegram():
     secrets = Secrets(gemini_api_key="k", telegram_bot_token="t", telegram_chat_id="1")
     assert isinstance(build_notifier(secrets), TelegramNotifier)
+
+
+def test_main_sends_telegram(monkeypatch):
+    sent: list[str] = []
+
+    class FakeTelegram:
+        def __init__(self, token: str, chat_id: str, *, http=None) -> None:
+            self.token = token
+            self.chat_id = chat_id
+
+        def send(self, text: str) -> None:
+            sent.append(text)
+
+    monkeypatch.setattr("src.notify.TelegramNotifier", FakeTelegram)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
+    monkeypatch.delenv("ALERT_WEBHOOK", raising=False)
+
+    assert main(["hello from CI"]) == 0
+    assert sent == ["hello from CI"]
+
+
+def test_main_uses_webhook_when_telegram_is_unset(monkeypatch):
+    calls: list[tuple[str, object]] = []
+
+    class FakeHTTP:
+        def post_json(self, url: str, *, json_body=None) -> None:
+            calls.append((url, json_body))
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("src.notify.HttpClient", FakeHTTP)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.setenv("ALERT_WEBHOOK", "https://example.test/hook")
+
+    assert main(["webhook message"]) == 0
+    assert calls == [("https://example.test/hook", {"text": "webhook message"})]
+
+
+def test_main_without_a_sink_prints_and_succeeds(monkeypatch, capsys):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.delenv("ALERT_WEBHOOK", raising=False)
+
+    assert main(["no sink"]) == 0
+    assert "no TELEGRAM_BOT_TOKEN" in capsys.readouterr().out
