@@ -1,14 +1,17 @@
-# Demo quickstart — a real video on the Oracle Always-Free VM
+# Demo quickstart — a real video on a free cloud host
 
-This is the shortest honest path from a fresh Oracle Cloud **Always Free** VM to
-a **real, watchable** long-form video plus its vertical Short, using **one free
-LLM key** and no local GPU. It documents the bounded **demo** mode of the
-pipeline: a real end-to-end run that is deliberately small so it finishes
-quickly on a free tier.
+This is the shortest honest path from a fresh checkout to a **real, watchable**
+long-form video plus its vertical Short, using **one free LLM key** and no local
+GPU. It documents the bounded **demo** mode of the pipeline: a real end-to-end
+run that is deliberately small so it finishes quickly on a free tier.
 
-For the full production runbook (Colab hero clips, scheduling, secrets matrix)
-see [`deploy.md`](deploy.md); for the stage-by-stage design see
-[`architecture.md`](architecture.md).
+The recommended no-card host is **GitHub Actions**; see
+[`actions.md`](actions.md) for the one-time setup. The commands below also work
+on Kaggle, on any Linux machine with Python 3.11+ and `ffmpeg`, or on a VM.
+
+For the full production runbook (scheduling, secrets matrix, the optional
+Kaggle/Colab GPU step) see [`deploy.md`](deploy.md); for the stage-by-stage
+design see [`architecture.md`](architecture.md).
 
 ## Table of Contents
 
@@ -16,6 +19,7 @@ see [`deploy.md`](deploy.md); for the stage-by-stage design see
 - [Prerequisites](#prerequisites)
 - [One free LLM key](#one-free-llm-key)
 - [Run it: dry-run, then demo](#run-it-dry-run-then-demo)
+- [Run it on GitHub Actions](#run-it-on-github-actions)
 - [View the result](#view-the-result)
 - [Re-run a bounded slice](#re-run-a-bounded-slice)
 - [Free-tier reality](#free-tier-reality)
@@ -53,32 +57,25 @@ directories and never clobber attempt 1. `runs/**` is git-ignored.
 
 ## Prerequisites
 
-1. **The VM, bootstrapped.** Create an Oracle Cloud **Always Free** compute
-   instance (Ubuntu). Then run the idempotent setup script, which installs
-   `python3`, `python3-venv`, **`ffmpeg`**, `git` and `jq`, clones the repo into
-   `$HOME/VideoGeneratorApp`, creates `.venv`, installs the package, and seeds
-   `.env`:
+1. **A free host.** The recommended path is **GitHub Actions** (no card): add
+   the repo, set the LLM secret, and use the **Daily video** workflow. See
+   [`actions.md`](actions.md). Any Linux machine with `ffmpeg` works too; so do
+   Kaggle and Colab notebooks.
+
+2. **Configuration.** For a local or notebook run, copy the template:
 
    ```bash
-   git clone --branch main https://github.com/ankitgupta-2835/VideoGeneratorApp.git "$HOME/VideoGeneratorApp"
-   bash "$HOME/VideoGeneratorApp/deploy/oracle/setup.sh"
-   ```
-
-   The script is [`../deploy/oracle/setup.sh`](../deploy/oracle/setup.sh); see
-   [`deploy.md`](deploy.md#oracle-vm-setup) for the details and the optional
-   preview port.
-
-2. **Configuration from the template.**
-
-   ```bash
-   cd "$HOME/VideoGeneratorApp"
+   git clone --branch main https://github.com/ankitgupta-2835/VideoGeneratorApp.git
+   cd VideoGeneratorApp
    cp .env.example .env
    ```
 
    `.env` is git-ignored and must never be committed. It mirrors
-   [`../.env.example`](../.env.example) field-for-field.
+   [`../.env.example`](../.env.example) field-for-field. On GitHub Actions the
+   same values come from repository secrets/variables instead.
 
-3. **`ffmpeg` on `PATH`.** `setup.sh` installs it; verify with `ffmpeg -version`.
+3. **`ffmpeg` on `PATH`.** The GitHub Actions workflow installs it. Locally:
+   `sudo apt-get install -y ffmpeg` (or your package manager).
 
 4. **One free LLM key** — see the next section.
 
@@ -158,28 +155,41 @@ videogen --category ai_tech --demo --max-scenes 6
 .venv/bin/python -m src.pipeline --category ai_tech
 ```
 
+## Run it on GitHub Actions
+
+This is the no-card production path. After the one-time setup in
+[`actions.md`](actions.md):
+
+1. Open **Actions → Daily video → Run workflow**.
+2. Choose `mode: demo` (or `dry-run` first, which needs no keys),
+   `category: auto`, `languages: en`, `max_scenes: 6`.
+3. Download the outputs from the run's **Artifacts** (review bundle) and the
+   **Releases** page (`run-<number>.zip` plus the MP4s).
+
+The scheduled workflow runs `mode: full` for the date's category in both
+languages at **01:30 UTC (07:00 IST)**. Manual runs default to `demo` so a
+first test is cheap. The workflow installs `ffmpeg` and `edge-tts`, restores the
+SQLite history/cache with `actions/cache`, and alerts Telegram on failure.
+
 ## View the result
 
 The CLI prints `run_id` and `work_dir`. From there:
 
-**Copy the videos to your laptop** (e.g. with `scp`):
+- **On GitHub Actions:** download the run's artifact (review bundle) and the
+  `run-<number>.zip` from **Releases**. Unzip it and open `review.html` beside
+  the media; or download an individual `video.mp4` / `short.mp4` from the same
+  release.
+- **Local/Kaggle/Colab:** copy the attempt directory to your laptop, or serve it
+  over a static HTTP server so the embedded `<video>` elements play in a
+  browser:
 
 ```bash
-scp -r <user>@<vm-ip>:'~/VideoGeneratorApp/runs/<run_id>/attempt-1' ./demo-run
-```
-
-**Or review in place via the preview page.** The run writes a self-contained
-HTML review sheet; serve it over any static HTTP server so you can watch the
-embedded `<video>` elements in a browser:
-
-```bash
-cd "$HOME/VideoGeneratorApp"
 python3 -m http.server 8000 --directory runs/<run_id>/attempt-1
-# then open http://<vm-ip>:8000/  (open the preview port in the OCI security list)
+# then open http://localhost:8000/
 ```
 
-`scp` is the simplest option; the HTTP server is only needed for the preview
-page.
+Keep `review.html` and the MP4s in the same directory — the page uses relative
+paths.
 
 ## Re-run a bounded slice
 
@@ -210,10 +220,15 @@ Be honest about the free tier before you scale up:
 - **Rate limits.** Trend sources (Google Trends, Reddit, Hacker News, News RSS)
   throttle aggressively; the demo keeps limits small. A failure often means
   "the free service was busy", not "the code is broken" — re-run.
+- **GitHub Actions minutes.** Public repos are free within fair use; private
+  repos get 2,000 minutes/month. A full two-language run is typically
+  20–45 minutes, so a private repo can approach that cap. See
+  [`actions.md`](actions.md#free-tier-limits-be-honest).
 - **Image-only visuals.** `--demo` intentionally skips hero/GPU clips, so the
   result uses generated/stock images and motion. Hero text-to-video clips are a
-  separate **Google Colab** step (see [`deploy.md`](deploy.md#colab-gpu-step-hero-renders))
-  and are **not** part of the demo.
+  separate **Kaggle/Colab** step (see
+  [`deploy.md`](deploy.md#gpu-step-kaggle-or-colab-optional)) and are **not**
+  part of the demo.
 - **Placeholder repair.** When a scene's image provider fails, the visuals
   stage writes a detailed prompt for that scene and retries Pollinations, then
   Cloudflare Workers AI if `CLOUDFLARE_ACCOUNT_ID` and
@@ -238,9 +253,9 @@ Be honest about the free tier before you scale up:
 | `scene N: ... HTTP 402: Free limit reached` | Pollinations free tier (1 image / 45 s) | the run waits once, then writes a detailed prompt and retries; set `POLLINATIONS_TOKEN` or the Cloudflare pair for a second free quota |
 | `visuals/` shows fewer files than scenes | real generated images live in the content-hash cache (`data/assets/cache/images/`) and motion scenes are `.mp4`, not `.jpg` | every asset is now copied to `visuals/scene_001.<ext>`, `scene_002.<ext>`, ... and listed in `visuals/manifest.json` |
 | Unsure which clips were joined, or in what order | the join step is opaque by default | read `motion/manifest.json` (scene → clip → duration) and `assemble/manifest.json` (ordered clip list); both are written per run |
-| `ffmpeg: not found` | system deps missing | re-run `bash deploy/oracle/setup.sh`, or `sudo apt-get install -y ffmpeg` |
-| Run finds no topic / empty trends | trend sources are throttled or returned nothing | re-run later; try another `--category`; verify outbound HTTPS from the VM |
-| `--demo` ignored / unknown flag | older checkout without demo support | `git pull` on the VM and re-run `setup.sh` |
+| `ffmpeg: not found` | system deps missing | `sudo apt-get install -y ffmpeg`; the Actions workflow installs it automatically |
+| Run finds no topic / empty trends | trend sources are throttled or returned nothing | re-run later; try another `--category`; verify outbound HTTPS from the runner/host |
+| `--demo` ignored / unknown flag | older checkout without demo support | `git pull` and re-run |
 | Preview page shows no video | opened the HTML without the media beside it, or stale port | serve the **attempt directory** (media + `review.html` together) over HTTP |
 
 > **Note on error names.** Missing secrets are caught at startup and surface as
@@ -250,7 +265,10 @@ Be honest about the free tier before you scale up:
 
 ## See also
 
-- [`deploy.md`](deploy.md) — full Oracle VM + Colab + scheduling runbook.
+- [`actions.md`](actions.md) — GitHub Actions host setup (no card), secrets,
+  outputs, quotas.
+- [`deploy.md`](deploy.md) — full deployment runbook: secrets, optional
+  Kaggle/Colab GPU step, scheduling, re-runs.
 - [`architecture.md`](architecture.md) — stages, gates, re-runs, free-tier split.
 - [`local-llm.md`](local-llm.md) — use Groq/Cerebras/GitHub Models or a local vLLM model.
 - [`live-testing.md`](live-testing.md) — opt-in live tests and rate-limit notes.

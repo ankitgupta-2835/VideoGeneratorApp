@@ -3,10 +3,10 @@
 A **$0, fully cloud-hosted** pipeline that turns a trending topic into a
 scripted, narrated, captioned **YouTube video** — plus a vertical **Short** —
 in **English and Hindi**, with human checkpoints and cheap re-runs when quality
-isn't good enough. Everything runs on free tiers: an Oracle Cloud *Always Free*
-VM for the "brain", Google Colab (free GPU) for hero clips, free image/video
-APIs, GitHub Actions for scheduling/CI, and Telegram for alerts. No local GPU
-and no always-on machine are required.
+isn't good enough. Everything runs on free tiers: **GitHub Actions** for the
+"brain" and scheduler, Kaggle or Google Colab (free GPU) for optional hero
+clips, free image/video APIs, and Telegram for alerts. No local GPU, no
+always-on machine, and no credit card are required.
 
 ## Status
 
@@ -25,9 +25,9 @@ This is an early-stage, actively developed repository. What works **today**:
   visuals, motion, FFmpeg assembly, Short derivation, QA, SEO, publish.
 - ⚠️ **Live publish is manual by default** and auto-upload is optional; it
   requires YouTube OAuth secrets.
-- ⚠️ **Hero-GPU rendering is a Colab step** — the notebook
-  (`notebooks/hero_render.ipynb`) renders text-to-video clips on a free GPU and
-  exchanges JSON job/result files with the VM.
+- ⚠️ **Hero-GPU rendering is optional and offloaded** — the notebook
+  (`notebooks/hero_render.ipynb`) renders text-to-video clips on a free Kaggle
+  or Colab GPU and exchanges JSON job/result files with the pipeline.
 - 🚧 **Live (non-dry-run) orchestration wiring is still landing.** Until it is
   wired, a non-`--dry-run` invocation prints a message and exits non-zero; the
   `--dry-run` engine is the supported entrypoint.
@@ -59,11 +59,11 @@ The daily loop, on a rotating category:
 
 | Plane | Host | What runs there |
 |---|---|---|
-| Brain (agents, FFmpeg, publish) | Oracle Cloud **Always Free** VM | Python + `ffmpeg`: agents, script, TTS, assembly, publish, SQLite store |
-| GPU hero clips | Google **Colab** (free GPU) | `notebooks/hero_render.ipynb` renders text-to-video clips |
+| Brain (agents, FFmpeg, publish) | **GitHub Actions** | Python + `ffmpeg`: agents, script, TTS, assembly, publish, SQLite store |
+| GPU hero clips (optional) | **Kaggle** or **Google Colab** (free GPU) | `notebooks/hero_render.ipynb` renders text-to-video clips |
 | Free image / video APIs | Pollinations · Stable Horde · Pexels · Pixabay | Scene images and stock clips |
-| Scheduler / CI | GitHub Actions + VM cron/systemd | Daily dispatch, lint, type-check and tests |
-| Alerts / preview | Telegram + a VM web page | Checkpoint notifications and side-by-side preview |
+| Scheduler / CI | **GitHub Actions** | Daily batch, lint, type-check and tests |
+| Alerts / preview | Telegram + the run zip | Checkpoint notifications and side-by-side preview |
 
 ## Architecture (high level)
 
@@ -115,7 +115,9 @@ The module form and the `videogen` console script take the same arguments:
 marker file per stage under `runs/<run_id>/stages/`. `--demo` is a bounded live
 run (real clients from `.env`, English only, image-only visuals, publisher
 dry-run) capped to `--max-scenes` scenes (default 6); see
-[`docs/demo.md`](docs/demo.md) for the end-to-end Oracle VM recipe.
+[`docs/demo.md`](docs/demo.md) for the end-to-end recipe. To run the whole
+pipeline on the free cloud host, see
+[`docs/actions.md`](docs/actions.md).
 
 ## Configuration
 
@@ -185,18 +187,19 @@ src/         package
   pipeline/    orchestrator + CLI (`videogen`)
 tests/       unit | integration | live | fixtures | golden
 docs/        agents.md, architecture.md, deploy.md
-deploy/      Oracle VM setup, cron/systemd units
-notebooks/   hero_render.ipynb (Colab GPU)
+deploy/      legacy VM helpers (optional; not needed for GitHub Actions)
+notebooks/   hero_render.ipynb (Kaggle/Colab GPU)
 ```
 
 ## Deployment
 
-The operational runbook for a $0, cloud-only deployment — Oracle VM setup,
-secrets matrix, the Colab GPU step, and scheduling via cron / systemd /
-GitHub Actions — is in [`docs/deploy.md`](docs/deploy.md). A scheduled daily run
-also exists as a GitHub Actions workflow at
+The operational runbook for a $0, cloud-only deployment — the GitHub Actions
+host, secrets matrix, the optional Kaggle/Colab GPU step, and scheduling — is
+in [`docs/deploy.md`](docs/deploy.md). The no-card host setup is in
+[`docs/actions.md`](docs/actions.md). A scheduled daily run exists as a GitHub
+Actions workflow at
 [`.github/workflows/daily.yml`](.github/workflows/daily.yml). To produce a first
-real video on the free VM, start with [`docs/demo.md`](docs/demo.md).
+real video, start with [`docs/demo.md`](docs/demo.md).
 
 ## License
 

@@ -7,6 +7,8 @@ tests.
 
 from __future__ import annotations
 
+import argparse
+import os
 from typing import Protocol, runtime_checkable
 
 from src.errors import ProviderError
@@ -20,6 +22,7 @@ __all__ = [
     "TelegramNotifier",
     "build_notifier",
     "checkpoint_text",
+    "main",
 ]
 
 # Telegram hard limit is 4096 characters.
@@ -85,3 +88,47 @@ def build_notifier(secrets: Secrets, *, http: HttpClient | None = None) -> Notif
             http=http,
         )
     return NullNotifier()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Send one alert from the command line (used by CI failure hooks).
+
+    Prefers Telegram; falls back to ``ALERT_WEBHOOK`` when only that is set.
+    With no sink configured it prints a note and exits ``0`` so a missing
+    optional alert never masks the real CI failure.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m src.notify",
+        description="Send one alert through Telegram or ALERT_WEBHOOK.",
+    )
+    parser.add_argument(
+        "text",
+        nargs="?",
+        default="VideoGeneratorApp alert",
+        help="Message body (default: a generic alert).",
+    )
+    args = parser.parse_args(argv)
+
+    token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_id = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
+    webhook = (os.environ.get("ALERT_WEBHOOK") or "").strip()
+
+    http = HttpClient()
+    try:
+        if token and chat_id:
+            TelegramNotifier(token, chat_id, http=http).send(args.text)
+            return 0
+        if webhook:
+            http.post_json(webhook, json_body={"text": args.text})
+            return 0
+        print("alert: no TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or ALERT_WEBHOOK configured")
+        return 0
+    except ProviderError as exc:
+        print(f"alert failed: {exc}")
+        return 1
+    finally:
+        http.close()
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised via ``python -m``
+    raise SystemExit(main())

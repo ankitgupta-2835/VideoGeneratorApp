@@ -1,119 +1,126 @@
-"""Task 5.4 tests: validate the scheduled GitHub Actions workflow.
+"""The GitHub Actions daily workflow is the no-card production host.
 
-The workflow is parsed as YAML and asserted structurally. Note that YAML 1.1
-parses the top-level ``on:`` key as the boolean ``True``, so the triggers are
-read via ``doc[True]``.
+These are file/content checks, like ``test_deploy_assets.py``: parse the YAML
+and assert the important contracts (schedule, manual dispatch, secrets, state
+cache, artifacts, release, failure alert) without running GitHub Actions.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "daily.yml"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "daily.yml"
+ACTIONS_DOC = REPO_ROOT / "docs" / "actions.md"
 
 
-def _load() -> dict[Any, Any]:
-    return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+def _workflow() -> dict:
+    assert WORKFLOW.is_file(), f"missing {WORKFLOW}"
+    data = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    return data
 
 
-def _job() -> dict[Any, Any]:
-    jobs = _load()["jobs"]
-    assert len(jobs) == 1, "the daily workflow should contain a single job"
-    return next(iter(jobs.values()))
+def _triggers(workflow: dict) -> dict:
+    # PyYAML (YAML 1.1) parses the key ``on`` as boolean True.
+    triggers = workflow.get("on", workflow.get(True))
+    assert isinstance(triggers, dict)
+    return triggers
 
 
-def _steps() -> list[dict[Any, Any]]:
-    return _job()["steps"]
+def _steps(workflow: dict) -> list[dict]:
+    steps = workflow["jobs"]["render"]["steps"]
+    assert isinstance(steps, list)
+    return steps
 
 
-def test_workflow_file_exists():
-    assert WORKFLOW_PATH.is_file()
+def _text(workflow: dict) -> str:
+    parts: list[str] = []
+    for step in _steps(workflow):
+        parts.append(str(step.get("uses", "")))
+        parts.append(str(step.get("with", "")))
+        parts.append(str(step.get("run", "")))
+    return "\n".join(parts)
 
 
-def test_has_schedule_and_workflow_dispatch_triggers():
-    doc = _load()
-    # `on` is parsed as boolean True by YAML 1.1.
-    triggers = doc.get(True) or doc.get("on")
-    assert triggers is not None
-    assert "schedule" in triggers
-    assert "workflow_dispatch" in triggers
-    crons = [entry["cron"] for entry in triggers["schedule"]]
-    assert "30 2 * * *" in crons
+def test_workflow_runs_on_schedule_and_manual_dispatch():
+    triggers = _triggers(_workflow())
+    schedule = triggers["schedule"]
+    assert schedule == [{"cron": "30 1 * * *"}]  # 07:00 IST
+    dispatch = triggers["workflow_dispatch"]
+    assert set(dispatch["inputs"]) == {"mode", "category", "languages", "max_scenes"}
+    assert dispatch["inputs"]["mode"]["options"] == ["dry-run", "demo", "full"]
 
 
-def test_dispatch_declares_dry_run_and_category_inputs():
-    triggers = _load()[True]
-    inputs = triggers["workflow_dispatch"]["inputs"]
-    assert "dry_run" in inputs
-    assert inputs["dry_run"]["type"] == "boolean"
-    assert "category" in inputs
-    assert set(inputs["category"]["options"]) >= {
-        "auto",
-        "ai_tech",
-        "finance",
-        "health_fitness",
-        "general_knowledge",
-    }
+def test_scheduled_runs_are_full_by_default():
+    text = _text(_workflow())
+    assert "github.event.inputs.mode || 'full'" in text
+    assert "inputs.languages || 'both'" in text
+    assert 'languages="en hi"' in text
 
 
-def test_concurrency_is_set():
-    concurrency = _load()["concurrency"]
-    assert concurrency["group"]
+def test_workflow_uses_the_date_rotation():
+    text = _text(_workflow())
+    assert "python -m src.pipeline.schedule" in text
+    assert "--category" in text
+    assert "--dry-run" in text
+    assert "--demo" in text
 
 
-def test_job_installs_ffmpeg():
-    runs = "\n".join(step.get("run", "") for step in _steps())
-    assert "apt-get" in runs
-    assert "ffmpeg" in runs
+def test_workflow_persists_state_between_runs():
+    workflow = _workflow()
+    steps = _steps(workflow)
+    cache_steps = [step for step in steps if str(step.get("uses", "")).startswith("actions/cache")]
+    assert cache_steps, "missing actions/cache state step"
+    paths = cache_steps[0]["with"]["path"]
+    assert "data/history.db" in paths
+    assert "data/assets/cache" in paths
+    assert "videogen-state-" in cache_steps[0]["with"]["restore-keys"]
 
 
-def test_setup_python_313():
-    versions = [
-        step["with"]["python-version"]
-        for step in _steps()
-        if step.get("uses", "").startswith("actions/setup-python")
+def test_workflow_uploads_and_publishes_artifacts():
+    text = _text(_workflow())
+    assert "actions/upload-artifact" in text
+    assert "runs/**/video.mp4" in text
+    assert "runs/**/short.mp4" in text
+    assert "gh release create" in text
+    assert "review.html" in text
+
+
+def test_workflow_sends_failure_alert_with_existing_notifier():
+    workflow = _workflow()
+    alert_steps = [
+        step for step in _steps(workflow) if step.get("name", "").startswith("Alert on failure")
     ]
-    assert versions == ["3.13"]
+    assert len(alert_steps) == 1
+    assert alert_steps[0]["if"] == "failure()"
+    assert "python -m src.notify" in alert_steps[0]["run"]
 
 
-def test_a_step_runs_the_pipeline_module():
-    runs = "\n".join(step.get("run", "") for step in _steps())
-    assert "python -m src.pipeline " in runs
-    assert "--category" in runs
+def test_workflow_has_write_permission_for_releases():
+    workflow = _workflow()
+    assert workflow["permissions"]["contents"] == "write"
+    assert workflow["concurrency"]["group"] == "daily-video"
 
 
-def test_category_is_resolved_for_auto():
-    runs = "\n".join(step.get("run", "") for step in _steps())
-    assert "python -m src.pipeline.schedule" in runs
+def test_workflow_installs_the_runtime_used_by_live_runs():
+    text = _text(_workflow())
+    assert "ffmpeg" in text
+    assert "edge-tts" in text
+    assert "pip install -e ." in text
 
 
-def test_secrets_are_passed_as_env():
-    env = _job()["env"]
-    referenced = {key: value for key, value in env.items() if "secrets." in str(value)}
-    assert referenced, "the job must map repository secrets into the environment"
-    for key in (
-        "LLM_PROVIDER",
-        "GEMINI_API_KEY",
-        "GROQ_API_KEY",
-        "OPENROUTER_API_KEY",
-        "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_CHAT_ID",
-        "PEXELS_API_KEY",
-        "PIXABAY_API_KEY",
-        "YOUTUBE_CLIENT_SECRET_EN",
-        "YOUTUBE_CLIENT_SECRET_HI",
-    ):
-        assert key in referenced
-        assert referenced[key] == f"${{{{ secrets.{key} }}}}"
+def test_workflow_does_not_mention_oracle_or_a_vm():
+    text = WORKFLOW.read_text(encoding="utf-8").lower()
+    assert "oracle" not in text
+    assert "systemd" not in text
 
 
-def test_uploads_runs_artifact():
-    uploads = [
-        step for step in _steps() if step.get("uses", "").startswith("actions/upload-artifact")
-    ]
-    assert uploads, "the workflow must upload run artifacts"
-    assert "runs/**" in uploads[0]["with"]["path"]
+def test_actions_runbook_covers_the_no_card_host():
+    assert ACTIONS_DOC.is_file(), f"missing {ACTIONS_DOC}"
+    text = ACTIONS_DOC.read_text(encoding="utf-8")
+    lowered = text.lower()
+    for needle in ("no card", "github actions", "actions/cache", "github releases", "kaggle"):
+        assert needle in lowered, f"docs/actions.md is missing {needle!r}"

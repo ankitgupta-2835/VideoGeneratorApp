@@ -23,6 +23,9 @@ data/output/
 data/history.db
 data/assets/*
 !data/assets/.gitkeep
+runs/
+pipeline.log
+release/
 *.mp4
 *.mkv
 *.mov

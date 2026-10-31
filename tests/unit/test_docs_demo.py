@@ -1,10 +1,10 @@
-"""Task 6.1 tests: the Oracle VM demo quickstart doc.
+"""Task 6.1 / 5.26 tests: the demo quickstart doc.
 
 These keep ``docs/demo.md`` honest and in sync with the frozen CLI contract and
 the deployment reality:
 
 * the doc exists and documents ``--demo`` / ``--max-scenes``;
-* it names the Oracle Always-Free VM, ``.env`` and a free LLM key;
+* it names the no-card GitHub Actions host, ``.env`` and a free LLM key;
 * it lists all four rotating categories, including ``general_knowledge``;
 * every relative local link resolves from the repo root;
 * ``README.md`` points at the demo flags.
@@ -41,10 +41,10 @@ def test_demo_doc_documents_flags():
         assert needle in text, f"docs/demo.md is missing {needle!r}"
 
 
-def test_demo_doc_names_the_free_vm_and_env():
+def test_demo_doc_names_the_host_and_env():
     text = _text(DEMO_DOC)
-    assert "Oracle" in text, "demo doc does not mention the Oracle VM"
-    assert "Always Free" in text or "Always-Free" in text, "demo doc does not say Always Free"
+    assert "GitHub Actions" in text, "demo doc does not mention the no-card host"
+    assert "no card" in text.lower() or "no-card" in text.lower(), "demo doc does not say no card"
     assert ".env" in text, "demo doc does not mention .env"
     assert ".env.example" in text, "demo doc does not point at .env.example"
 

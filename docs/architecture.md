@@ -167,18 +167,19 @@ Compute is split across free tiers so no local GPU/CPU is required:
 
 | Plane | Host | Runs |
 |---|---|---|
-| Brain | Oracle Cloud **Always Free** VM | Python + `ffmpeg`, all stage agents, TTS, assembly, publish, SQLite store |
-| GPU hero clips | Google **Colab** (free GPU) | `notebooks/hero_render.ipynb` |
+| Brain | **GitHub Actions** | Python + `ffmpeg`, all stage agents, TTS, assembly, publish, SQLite store |
+| GPU hero clips (optional) | **Kaggle** or **Google Colab** (free GPU) | `notebooks/hero_render.ipynb` |
 | Media APIs | Pollinations · Stable Horde · Pexels · Pixabay | images and stock clips |
-| Scheduler / CI | GitHub Actions + VM cron/systemd | daily dispatch and CI |
-| Alerts / preview | Telegram + VM web page | checkpoint alerts and preview |
+| Scheduler / CI | **GitHub Actions** | daily dispatch and CI |
+| Alerts / preview | Telegram + the run zip | checkpoint alerts and preview |
 
-The VM and Colab never talk directly: they exchange JSON job/result files
-through a shared Drive folder, using the contract in
-[`render_job.py`](../src/visuals/render_job.py). Full setup — Oracle VM
-bootstrap, the secrets matrix, the Colab step, and scheduling — is in
-[`deploy.md`](deploy.md). The scheduled daily run is defined by the GitHub
-Actions workflow [`../.github/workflows/daily.yml`](../.github/workflows/daily.yml)
-(02:30 UTC, with a manual `workflow_dispatch` for one category); the bounded
-`--demo` mode for producing a first real video on the free VM is described in
+The host and the optional GPU worker never talk directly: they exchange JSON
+job/result files through a shared folder, using the contract in
+[`render_job.py`](../src/visuals/render_job.py). Full setup — the no-card
+GitHub Actions host, the secrets matrix, the optional Kaggle/Colab step, and
+scheduling — is in [`deploy.md`](deploy.md). The scheduled daily run is defined
+by the GitHub Actions workflow
+[`../.github/workflows/daily.yml`](../.github/workflows/daily.yml)
+(01:30 UTC = 07:00 IST, with a manual `workflow_dispatch` for one category); the
+bounded `--demo` mode for producing a first real video is described in
 [`demo.md`](demo.md).
