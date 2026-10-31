@@ -23,6 +23,28 @@ __all__ = ["HttpClient"]
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
+def _error_detail(resp: httpx.Response) -> str:
+    """Return a short one-line summary of a provider's error body.
+
+    Providers put the actionable part (e.g. "model ... is not found for API
+    version v1beta") in the body, not the status line, so include it when it
+    is available and readable.
+    """
+    try:
+        data = resp.json()
+    except ValueError:
+        text = resp.text.strip()
+        return f": {text[:300]}" if text else ""
+    if isinstance(data, dict):
+        error = data.get("error")
+        if isinstance(error, dict) and error.get("message"):
+            return f": {str(error['message'])[:300]}"
+        if isinstance(error, str):
+            return f": {error[:300]}"
+    text = resp.text.strip()
+    return f": {text[:300]}" if text else ""
+
+
 class HttpClient:
     def __init__(
         self,
@@ -88,7 +110,7 @@ class HttpClient:
             if resp.status_code in _RETRY_STATUS and attempt < self.max_retries:
                 self._sleep(self._backoff(attempt, resp))
                 continue
-            raise ProviderError(f"{method} {url} -> HTTP {resp.status_code}")
+            raise ProviderError(f"{method} {url} -> HTTP {resp.status_code}{_error_detail(resp)}")
 
         raise ProviderError(
             f"{method} {url} failed after {self.max_retries + 1} attempts: {last_exc}"

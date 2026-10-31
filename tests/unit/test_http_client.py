@@ -85,6 +85,28 @@ def test_client_error_not_retried():
     assert calls["n"] == 1
 
 
+def test_error_includes_provider_message():
+    """The provider's error body carries the actionable cause (e.g. a retired
+    model name); it must survive into the raised message."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404,
+            json={
+                "error": {
+                    "code": 404,
+                    "message": "models/nope is not found for API version v1beta",
+                    "status": "NOT_FOUND",
+                }
+            },
+        )
+
+    client, _ = make_client(handler)
+    with pytest.raises(ProviderError) as excinfo:
+        client.get_json("https://api.test/x")
+    assert "not found for API version v1beta" in str(excinfo.value)
+
+
 def test_network_error_raises_provider_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("boom")
