@@ -112,3 +112,17 @@ def test_build_llm_client_selects_provider():
 
     secrets2 = Secrets(llm_provider="gemini", gemini_api_key="k")
     assert isinstance(build_llm_client(secrets2), GeminiClient)
+
+
+def test_build_llm_client_uses_llm_model_override():
+    """``LLM_MODEL`` (Secrets.llm_model) must override the provider default."""
+    secrets = Secrets(gemini_api_key="k", llm_model="gemini-flash-latest")
+    client = build_llm_client(secrets, http=object())
+    assert isinstance(client, GeminiClient)
+    assert client.model == "gemini-flash-latest"
+
+
+def test_gemini_default_model_is_not_the_retired_one():
+    from src.llm.client import DEFAULT_MODELS
+
+    assert DEFAULT_MODELS["gemini"] != "gemini-2.0-flash"
