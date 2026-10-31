@@ -214,6 +214,11 @@ Be honest about the free tier before you scale up:
   result uses generated/stock images and motion. Hero text-to-video clips are a
   separate **Google Colab** step (see [`deploy.md`](deploy.md#colab-gpu-step-hero-renders))
   and are **not** part of the demo.
+- **Placeholder repair.** When a scene's image provider fails, the visuals
+  stage writes a detailed prompt for that scene and retries Pollinations, then
+  Cloudflare Workers AI if `CLOUDFLARE_ACCOUNT_ID` and
+  `CLOUDFLARE_API_TOKEN` are set. Repaired scenes are recorded in
+  `visuals/manifest.json` (`repaired`, `prompt`, `provider`).
 - **Publishing is manual.** `--demo` sets publisher dry-run, and the project
   default is `publish_mode: manual`; nothing uploads unless you wire YouTube
   OAuth secrets and opt in. Treat the demo as "produce and review", not
@@ -230,7 +235,7 @@ Be honest about the free tier before you scale up:
 | `ProviderError: ...` mid-run | provider call failed — bad/expired key, or a free-tier rate limit | check the key and quotas; wait and re-run, or lower `--max-scenes` |
 | `... -> HTTP 404: ... no longer available to new users` | the pinned Gemini model was retired | set `LLM_MODEL` in `.env` to the model named in the message (or `gemini-flash-latest`) and re-run |
 | `... failed after N attempts: The read operation timed out` | the provider was slow (long prompt / model thinking) | raise the limit with `HTTP_TIMEOUT=180` in `.env` and re-run |
-| `scene N: ... HTTP 402: Free limit reached` | Pollinations free tier (1 image / 45 s) | the run waits once, then uses a placeholder; set `POLLINATIONS_TOKEN` (or Pexels/Pixabay keys) for real images |
+| `scene N: ... HTTP 402: Free limit reached` | Pollinations free tier (1 image / 45 s) | the run waits once, then writes a detailed prompt and retries; set `POLLINATIONS_TOKEN` or the Cloudflare pair for a second free quota |
 | `visuals/` shows fewer files than scenes | real generated images live in the content-hash cache (`data/assets/cache/images/`) and motion scenes are `.mp4`, not `.jpg` | every asset is now copied to `visuals/scene_001.<ext>`, `scene_002.<ext>`, ... and listed in `visuals/manifest.json` |
 | Unsure which clips were joined, or in what order | the join step is opaque by default | read `motion/manifest.json` (scene → clip → duration) and `assemble/manifest.json` (ordered clip list); both are written per run |
 | `ffmpeg: not found` | system deps missing | re-run `bash deploy/oracle/setup.sh`, or `sudo apt-get install -y ffmpeg` |

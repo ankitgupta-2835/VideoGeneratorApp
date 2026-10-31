@@ -49,6 +49,10 @@ class Secrets(BaseModel):
     # Media providers
     pexels_api_key: SecretStr | None = None
     pixabay_api_key: SecretStr | None = None
+    # Optional second free image provider (Cloudflare Workers AI). When both
+    # values are set, the prompt-repair pass can retry with FLUX.1 schnell.
+    cloudflare_account_id: str | None = None
+    cloudflare_api_token: SecretStr | None = None
 
     # Optional upload credentials
     youtube_client_secret_en: SecretStr | None = None

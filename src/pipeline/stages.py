@@ -63,13 +63,18 @@ from src.agents.angle_strategist import AngleStrategistAgent
 from src.agents.base import Agent, AgentResult
 from src.agents.compliance import ComplianceAgent, ComplianceInput, ComplianceReport
 from src.agents.localizer import LocalizerAgent
+from src.agents.prompt_enhancer import (
+    PromptEnhanceInput,
+    PromptEnhancerAgent,
+    fallback_prompt,
+)
 from src.agents.publisher import PublisherAgent, PublishInput
 from src.agents.qa_critic import QaCriticAgent, QaInput
 from src.agents.research import ResearchAgent
 from src.agents.scriptwriter import ScriptRequest, ScriptwriterAgent
 from src.agents.seo import Chapter, SeoAgent, SeoInput
 from src.agents.trend_scout import ScoutInput, TrendScoutAgent
-from src.agents.visual_director import VisualDirectorAgent, VisualInput
+from src.agents.visual_director import SceneAsset, VisualDirectorAgent, VisualInput
 from src.agents.voice_director import VoiceDirectorAgent, VoiceInput
 from src.assemble.captions import Word as CaptionWord
 from src.assemble.captions import group_words, write_srt
@@ -120,6 +125,16 @@ def _display_path(path: Path, base: Path) -> str:
         return str(path)
 
 
+def _image_provider(client: Any) -> str:
+    """A short provider label for manifests, derived from the client class."""
+    name = type(client).__name__.lower()
+    if "cloudflare" in name:
+        return "cloudflare"
+    if "pollinations" in name:
+        return "pollinations"
+    return name or "image"
+
+
 class Pipeline:
     """Holds the artifact bag and builds the wired stage mapping for one run.
 
@@ -137,6 +152,7 @@ class Pipeline:
         store: Database | None = None,
         tts_backend: TTSBackend | None = None,
         image_client: Any = None,
+        fallback_image_client: Any = None,
         hero_client: Any = None,
         stock_client: Any = None,
         http: Any = None,
@@ -164,6 +180,7 @@ class Pipeline:
         self._store = store
         self._tts_backend = tts_backend
         self._image_client = image_client
+        self._fallback_image_client = fallback_image_client
         self._hero_client = hero_client
         self._stock_client = stock_client
         self._http = http
@@ -454,7 +471,7 @@ class Pipeline:
         visuals_dir = self._out_dir / "visuals"
         visuals_dir.mkdir(parents=True, exist_ok=True)
         items: list[Any] = []
-        manifest: list[dict[str, Any]] = []
+        sources: dict[int, str] = {}
         notes = list(result.notes)
         for asset in assets.items:
             source = Path(asset.path)
@@ -467,19 +484,33 @@ class Pipeline:
                     notes.append(f"scene {asset.index}: asset missing at {source}")
                     dest = source
             items.append(asset.model_copy(update={"path": str(dest)}))
-            manifest.append(
-                {
-                    "index": asset.index,
-                    "kind": asset.kind,
-                    "provider": asset.provider,
-                    "placeholder": asset.provider == "placeholder",
-                    "scene_file": _display_path(dest, self._out_dir),
-                    "source": _display_path(source, self._out_dir),
-                }
-            )
+            sources[asset.index] = _display_path(source, self._out_dir)
+
+        # Repair pass: write a detailed prompt for every placeholder scene and
+        # retry the image providers before motion/assembly uses the placeholder.
+        items, prompts, repair_notes = self._repair_visuals(items, blueprint, visuals_dir)
+        notes.extend(repair_notes)
 
         assets = assets.model_copy(update={"items": items})
         self._bag[Stage.VISUALS] = assets
+        manifest: list[dict[str, Any]] = []
+        for asset in items:
+            attempted = asset.index in prompts
+            repaired = attempted and asset.provider != "placeholder"
+            scene_file = _display_path(Path(asset.path), self._out_dir)
+            entry: dict[str, Any] = {
+                "index": asset.index,
+                "kind": asset.kind,
+                "provider": asset.provider,
+                "placeholder": asset.provider == "placeholder",
+                "repaired": repaired,
+                "scene_file": scene_file,
+                "source": (scene_file if repaired else sources.get(asset.index, scene_file)),
+            }
+            if attempted:
+                entry["prompt"] = prompts[asset.index]
+            manifest.append(entry)
+
         manifest_path = visuals_dir / "manifest.json"
         manifest_path.write_text(json.dumps({"scenes": manifest}, indent=2), encoding="utf-8")
 
@@ -503,6 +534,103 @@ class Pipeline:
             notes=notes,
             redo_from=redo_from,
         )
+
+    def _repair_visuals(
+        self, items: list[Any], blueprint: Blueprint, visuals_dir: Path
+    ) -> tuple[list[Any], dict[int, str], list[str]]:
+        """Rewrite prompts and regenerate every placeholder scene once.
+
+        Returns the updated assets, the enhanced prompts keyed by scene index,
+        and human-readable notes. Non-placeholder scenes are never touched.
+        """
+        placeholders = [asset for asset in items if asset.provider == "placeholder"]
+        if not placeholders:
+            return items, {}, []
+
+        scenes = {scene.index: scene for scene in blueprint.scenes}
+        enhancer = PromptEnhancerAgent(self._llm) if self._llm is not None else None
+        clients = self._repair_clients()
+        prompts: dict[int, str] = {}
+        repaired: dict[int, Any] = {}
+        notes: list[str] = []
+
+        for asset in placeholders:
+            scene = scenes.get(asset.index)
+            if scene is None:
+                continue
+            prompt = self._enhanced_prompt(enhancer, blueprint, scene)
+            prompts[asset.index] = prompt
+            new_asset = self._generate_repaired(clients, prompt, asset.index, visuals_dir, notes)
+            if new_asset is None:
+                notes.append(f"scene {asset.index}: image repair failed; keeping placeholder")
+                continue
+            repaired[asset.index] = new_asset
+            # Remove the old placeholder and any other stale scene file so the
+            # folder contains exactly one canonical asset per scene.
+            for stale in visuals_dir.glob(f"scene_{asset.index:03d}*"):
+                if stale.resolve() != Path(new_asset.path).resolve():
+                    stale.unlink(missing_ok=True)
+            notes.append(
+                f"scene {asset.index}: repaired with a detailed prompt " f"({new_asset.provider})"
+            )
+
+        if not repaired:
+            return items, prompts, notes
+        return [repaired.get(asset.index, asset) for asset in items], prompts, notes
+
+    def _repair_clients(self) -> list[Any]:
+        """Primary image client first, then the optional free fallback."""
+        clients: list[Any] = []
+        for client in (self._image_client, self._fallback_image_client):
+            if client is not None and all(client is not existing for existing in clients):
+                clients.append(client)
+        return clients
+
+    @staticmethod
+    def _enhanced_prompt(enhancer: Any, blueprint: Blueprint, scene: Any) -> str:
+        payload = PromptEnhanceInput(
+            title=blueprint.meta.title,
+            category=blueprint.meta.category,
+            narration=scene.narration,
+            on_screen_text=scene.on_screen_text,
+        )
+        if enhancer is None:
+            return fallback_prompt(payload)
+        result = enhancer.run(payload)
+        if result.status != "ok" or result.data is None:
+            return fallback_prompt(payload)
+        return result.data.prompt
+
+    @staticmethod
+    def _generate_repaired(
+        clients: list[Any],
+        prompt: str,
+        index: int,
+        visuals_dir: Path,
+        notes: list[str],
+    ) -> Any | None:
+        for client in clients:
+            provider = _image_provider(client)
+            try:
+                path = client.generate(prompt, width=1280, height=720)
+            except Exception as exc:  # noqa: BLE001 - try the next free provider
+                notes.append(f"scene {index}: {provider} retry failed: {exc}")
+                continue
+            source = Path(path)
+            if not source.is_file():
+                notes.append(f"scene {index}: {provider} returned a missing file {source}")
+                continue
+            suffix = source.suffix.lower() or ".jpg"
+            dest = visuals_dir / f"scene_{index:03d}{suffix}"
+            if source.resolve() != dest.resolve():
+                shutil.copy2(source, dest)
+            return SceneAsset(
+                index=index,
+                kind="image",
+                path=str(dest),
+                provider=provider,
+            )
+        return None
 
     def _stage_motion(self, ctx: RunContext) -> StageResult:
         assets = self._bag[Stage.VISUALS]
@@ -769,6 +897,7 @@ def build_pipeline(
     store: Database | None = None,
     tts_backend: TTSBackend | None = None,
     image_client: Any = None,
+    fallback_image_client: Any = None,
     hero_client: Any = None,
     stock_client: Any = None,
     http: Any = None,
@@ -794,6 +923,7 @@ def build_pipeline(
         store=store,
         tts_backend=tts_backend,
         image_client=image_client,
+        fallback_image_client=fallback_image_client,
         hero_client=hero_client,
         stock_client=stock_client,
         http=http,
