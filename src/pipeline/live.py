@@ -43,6 +43,7 @@ from src.trends.hackernews import HackerNewsSource
 from src.trends.news_rss import NewsRssSource
 from src.trends.reddit import RedditSource
 from src.visuals.hero_video import HeroVideoClient, build_providers
+from src.visuals.images_cloudflare import CloudflareImageClient
 from src.visuals.images_pollinations import PollinationsImageClient
 from src.visuals.stock import PexelsClient, PixabayClient
 
@@ -95,6 +96,21 @@ def _build_stock_client(secrets: Secrets, http: HttpClient) -> Any:
     return None
 
 
+def _build_cloudflare_image(secrets: Secrets, http: HttpClient, cache_dir: Path) -> Any | None:
+    """Build the optional free fallback image client (Cloudflare Workers AI)."""
+    account = getattr(secrets, "cloudflare_account_id", None)
+    token = getattr(secrets, "cloudflare_api_token", None)
+    if not account or token is None:
+        return None
+    value = token.get_secret_value() if hasattr(token, "get_secret_value") else str(token)
+    return CloudflareImageClient(
+        http,
+        cache_dir / "images-cloudflare",
+        account_id=str(account),
+        token=value,
+    )
+
+
 def _category_config(categories: Categories | None, category: str | None) -> Category | None:
     """Look up one category's config, tolerating a missing/unknown name."""
     if categories is None or category is None:
@@ -138,6 +154,7 @@ def build_live_stages(
     llm: LLMClient | None = None,
     tts_backend: TTSBackend | None = None,
     image_client: Any = None,
+    fallback_image_client: Any = None,
     hero_client: Any = None,
     stock_client: Any = None,
     **kw: Any,
@@ -173,6 +190,11 @@ def build_live_stages(
     if image_client is None:
         image_client = pollinations
 
+    if fallback_image_client is None:
+        # Used only by the placeholder-repair pass, so a throttled primary
+        # provider does not force the run to ship placeholder art.
+        fallback_image_client = _build_cloudflare_image(secrets, http, cache_dir)
+
     if demo:
         # Image-only: never reach for a hero or stock provider.
         hero_client = None
@@ -191,6 +213,7 @@ def build_live_stages(
         store=store,
         tts_backend=tts_backend,
         image_client=image_client,
+        fallback_image_client=fallback_image_client,
         hero_client=hero_client,
         stock_client=stock_client,
         http=http,
