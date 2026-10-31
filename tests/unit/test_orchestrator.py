@@ -279,3 +279,22 @@ def test_default_max_rework_is_two(tmp_path: Path):
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__]))
+
+
+def test_progress_callback_reports_each_stage(tmp_path: Path):
+    lines: list[str] = []
+    orch = Orchestrator({Stage.TREND: lambda ctx: StageResult(status="ok")})
+    orch.run("ai_tech", work_dir=tmp_path, progress=lines.append)
+
+    assert lines[0].endswith("trend ...")
+    assert "trend ok (" in lines[1]
+
+
+def test_progress_callback_includes_failure_reason(tmp_path: Path):
+    lines: list[str] = []
+    orch = Orchestrator({Stage.TREND: lambda ctx: StageResult(status="fail", notes=["bad source"])})
+    orch.run("ai_tech", work_dir=tmp_path, progress=lines.append)
+
+    joined = "\n".join(lines)
+    assert "trend FAILED" in joined
+    assert "reason: bad source" in joined
