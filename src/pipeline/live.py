@@ -75,7 +75,7 @@ def _build_llm(secrets: Secrets, *, http: HttpClient, llm: LLMClient | None) -> 
     if llm is not None:
         return llm
     _require_llm_key(secrets)
-    return build_llm_client(secrets, http=http)
+    return build_llm_client(secrets, http=http, model=secrets.llm_model)
 
 
 def _build_store(settings: Settings, store: Database | None) -> Database | None:

@@ -30,6 +30,8 @@ _PROVIDER_KEY_FIELD: dict[str, str] = {
 class Secrets(BaseModel):
     # LLM
     llm_provider: Literal["gemini", "groq", "openrouter"] = "gemini"
+    # Optional model override (env ``LLM_MODEL``); blank uses the provider default.
+    llm_model: str | None = None
     gemini_api_key: SecretStr | None = None
     groq_api_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
