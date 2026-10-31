@@ -80,6 +80,7 @@ from src.llm.client import LLMClient
 from src.notify import Notifier, NullNotifier
 from src.pipeline.orchestrator import RunContext, StageFn, StageResult
 from src.qa.checks import QaChecks, run_checks
+from src.qa.diagnose import qa_redo_stage
 from src.rerun.controller import Stage
 from src.schema.blueprint import Blueprint
 from src.store.db import Database
@@ -100,6 +101,15 @@ def _default_motion_renderer(image: Path, out: Path, duration_sec: float) -> Pat
     out.parent.mkdir(parents=True, exist_ok=True)
     motion.render(motion.build_kenburns_command(image, out, duration_sec=duration_sec))
     return out
+
+
+def _caption_cues(path: Path) -> int:
+    """Count SRT cues; ``0`` means missing, empty, or unreadable."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    return text.count("-->")
 
 
 class Pipeline:
@@ -476,6 +486,20 @@ class Pipeline:
     # quality / publish stages
     # ------------------------------------------------------------------ #
     def _stage_qa(self, ctx: RunContext) -> StageResult:
+        # Cheap, deterministic caption gate first: an empty SRT is a captions
+        # failure, never a video failure, so redo only that stage.
+        if Stage.CAPTIONS in self._stages:
+            captions_path = self._out_dir / "captions" / "captions.srt"
+            if _caption_cues(captions_path) == 0:
+                return StageResult(
+                    status="fail",
+                    notes=[
+                        f"captions missing or empty: {captions_path}",
+                        "QA gate not passed",
+                    ],
+                    redo_from=Stage.CAPTIONS.value,
+                )
+
         blueprint = self._blueprint()
         video = self._bag.get(Stage.ASSEMBLE) or self._bag.get(Stage.SHORT)
         video_path = Path(video) if video is not None else self._out_dir / "video.mp4"
@@ -486,12 +510,17 @@ class Pipeline:
         if result.status != "ok" or result.data is None or not result.data.passed:
             notes = list(result.notes)
             report = result.data
+            redo_from: str | None = None
             if report is not None:
                 notes.append(f"QA score {report.score:.1f} (minimum {self._min_score:.0f})")
                 notes.extend(f"technical: {issue}" for issue in report.technical_issues)
                 notes.extend(f"critique: {critique}" for critique in report.critiques)
+                # Only the artifact that failed should be regenerated; the
+                # orchestrator replays this stage and everything after it.
+                target = qa_redo_stage(report.technical_issues)
+                redo_from = target.value if target is not None else None
             notes.append("QA gate not passed")
-            return StageResult(status="fail", notes=notes)
+            return StageResult(status="fail", notes=notes, redo_from=redo_from)
         self._bag[Stage.QA] = result.data
         return self._agent_result(result, artifact=f"score={result.data.score:.1f}")
 

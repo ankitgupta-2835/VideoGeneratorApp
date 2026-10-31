@@ -85,11 +85,17 @@ class RunContext(BaseModel):
 
 
 class StageResult(BaseModel):
-    """What a stage function returns: ``ok`` | ``rework`` | ``fail``."""
+    """What a stage function returns: ``ok`` | ``rework`` | ``fail``.
+
+    ``redo_from`` (on a ``fail``) names an earlier stage that should be
+    replayed instead of aborting the run: the orchestrator resets that stage
+    and every stage after it. QA uses it to fix only the broken artifact.
+    """
 
     status: str = "ok"
     artifact: str | None = None
     notes: list[str] = Field(default_factory=list)
+    redo_from: str | None = None
 
 
 StageFn = Callable[[RunContext], StageResult]
@@ -127,11 +133,13 @@ class Orchestrator:
         notifier: Notifier | None = None,
         store: Database | None = None,
         max_rework: int = 2,
+        max_redos: int = 1,
     ) -> None:
         self._stages = dict(stages)
         self._notifier = notifier
         self._store = store
         self._max_rework = max(0, max_rework)
+        self._max_redos = max(0, max_redos)
 
     # ------------------------------------------------------------------ #
     # public API
@@ -177,23 +185,37 @@ class Orchestrator:
             self._store.create_run(run_id, category, language)
 
         total = len(STAGE_ORDER)
-        for index, stage in enumerate(STAGE_ORDER, start=1):
+        index = 0
+        redos: dict[str, int] = {}
+        while index < total:
+            stage = STAGE_ORDER[index]
             fn = self._stages.get(stage)
             if fn is None:
                 state.stages[stage.value] = StageStatus.SKIPPED.value
+                index += 1
                 continue
 
-            label = f"[{index:>2}/{total}] {stage.value}"
+            label = f"[{index + 1:>2}/{total}] {stage.value}"
             if progress is not None:
                 progress(f"{label} ...")
             started = monotonic()
-            ok, artifact, notes = self._run_stage(stage, fn, ctx)
+            ok, artifact, notes, redo_from = self._run_stage(stage, fn, ctx)
             elapsed = monotonic() - started
             state.notes.extend(notes)
             ctx.notes.extend(notes)
 
             if not ok:
                 state.stages[stage.value] = StageStatus.FAIL.value
+                target = self._redo_target(redo_from, index)
+                if target is not None and redos.get(target.value, 0) < self._max_redos:
+                    redos[target.value] = redos.get(target.value, 0) + 1
+                    if progress is not None:
+                        progress(
+                            f"{label} FAILED ({elapsed:.1f}s) - " f"redoing from {target.value}"
+                        )
+                    self._reset_from(state, target)
+                    index = STAGE_ORDER.index(target)
+                    continue
                 if progress is not None:
                     progress(f"{label} FAILED ({elapsed:.1f}s)")
                     for note in notes:
@@ -208,6 +230,7 @@ class Orchestrator:
             if progress is not None:
                 progress(f"{label} ok ({elapsed:.1f}s)")
             self._fire_checkpoint(stage, artifact, state)
+            index += 1
         else:
             state.status = "ok"
 
@@ -221,12 +244,14 @@ class Orchestrator:
     # ------------------------------------------------------------------ #
     def _run_stage(
         self, stage: Stage, fn: StageFn, ctx: RunContext
-    ) -> tuple[bool, str | None, list[str]]:
+    ) -> tuple[bool, str | None, list[str], str | None]:
         """Invoke ``fn`` with in-place rework retries.
 
-        Returns ``(ok, artifact, notes)``. ``max_rework`` is the number of
-        retries after the first call, so at most ``max_rework + 1`` calls are
-        made before the stage is failed.
+        Returns ``(ok, artifact, notes, redo_from)``. ``max_rework`` is the
+        number of retries after the first call, so at most ``max_rework + 1``
+        calls are made before the stage is failed. ``redo_from`` is passed
+        through from a failing :class:`StageResult` so the orchestrator can
+        replay an earlier stage instead of aborting.
         """
         notes: list[str] = []
         retries = 0
@@ -235,31 +260,61 @@ class Orchestrator:
                 result = fn(ctx)
             except Exception as exc:  # noqa: BLE001 - a stage may raise anything
                 notes.append(f"{stage.value} raised: {exc}")
-                return False, None, notes
+                return False, None, notes, None
 
             if not isinstance(result, StageResult):
                 notes.append(f"{stage.value} returned a non-StageResult: {result!r}")
-                return False, None, notes
+                return False, None, notes, None
 
             notes.extend(result.notes)
 
             if result.status == "ok":
-                return True, result.artifact, notes
+                return True, result.artifact, notes, None
             if result.status == "fail":
                 notes.append(f"{stage.value} failed")
-                return False, None, notes
+                return False, None, notes, result.redo_from
             if result.status == "rework":
                 if retries >= self._max_rework:
                     notes.append(
                         f"{stage.value} still requested rework after "
                         f"{self._max_rework} retries; failing"
                     )
-                    return False, None, notes
+                    return False, None, notes, None
                 retries += 1
                 continue
 
             notes.append(f"{stage.value} returned unknown status {result.status!r}")
-            return False, None, notes
+            return False, None, notes, None
+
+    def _redo_target(self, redo_from: str | None, current: int) -> Stage | None:
+        """Validate a stage's requested redo target.
+
+        Only an earlier, wired stage may be replayed; requesting the current
+        stage (or a later/unknown one) is ignored so a broken stage cannot
+        loop on itself.
+        """
+        if not redo_from:
+            return None
+        try:
+            target = Stage(redo_from)
+        except ValueError:
+            return None
+        if target not in self._stages:
+            return None
+        if STAGE_ORDER.index(target) >= current:
+            return None
+        return target
+
+    @staticmethod
+    def _reset_from(state: RunState, target: Stage) -> None:
+        """Mark ``target`` and every later stage pending again for a redo."""
+        start = STAGE_ORDER.index(target)
+        for stage in STAGE_ORDER[start:]:
+            state.stages[stage.value] = StageStatus.PENDING.value
+            state.artifacts.pop(stage.value, None)
+            if stage.value in state.completed:
+                state.completed.remove(stage.value)
+        state.status = "failed"
 
     def _fire_checkpoint(self, stage: Stage, artifact: str | None, state: RunState) -> None:
         checkpoint = CHECKPOINTS.get(stage)

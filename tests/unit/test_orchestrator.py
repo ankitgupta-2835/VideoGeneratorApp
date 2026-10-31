@@ -298,3 +298,48 @@ def test_progress_callback_includes_failure_reason(tmp_path: Path):
     joined = "\n".join(lines)
     assert "trend FAILED" in joined
     assert "reason: bad source" in joined
+
+
+def test_failure_can_request_redo_of_an_earlier_stage(tmp_path: Path):
+    calls = {"trend": 0, "visuals": 0, "qa": 0}
+
+    def trend(ctx: RunContext) -> StageResult:
+        calls["trend"] += 1
+        return StageResult(status="ok")
+
+    def visuals(ctx: RunContext) -> StageResult:
+        calls["visuals"] += 1
+        return StageResult(status="ok")
+
+    def qa(ctx: RunContext) -> StageResult:
+        calls["qa"] += 1
+        if calls["qa"] == 1:
+            return StageResult(status="fail", notes=["black frame"], redo_from="visuals")
+        return StageResult(status="ok")
+
+    orch = Orchestrator({Stage.TREND: trend, Stage.VISUALS: visuals, Stage.QA: qa})
+    state = orch.run("ai_tech", work_dir=tmp_path)
+
+    assert state.status == "ok"
+    # Only the broken stage and its downstream were replayed.
+    assert calls == {"trend": 1, "visuals": 2, "qa": 2}
+    assert state.stages["visuals"] == "ok"
+    assert state.stages["qa"] == "ok"
+
+
+def test_redo_target_is_attempted_at_most_once(tmp_path: Path):
+    calls = {"visuals": 0, "qa": 0}
+
+    def visuals(ctx: RunContext) -> StageResult:
+        calls["visuals"] += 1
+        return StageResult(status="ok")
+
+    def qa(ctx: RunContext) -> StageResult:
+        calls["qa"] += 1
+        return StageResult(status="fail", notes=["black frame"], redo_from="visuals")
+
+    orch = Orchestrator({Stage.VISUALS: visuals, Stage.QA: qa})
+    state = orch.run("ai_tech", work_dir=tmp_path)
+
+    assert state.status == "failed"
+    assert calls == {"visuals": 2, "qa": 2}
