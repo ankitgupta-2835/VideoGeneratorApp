@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -22,6 +23,21 @@ __all__ = ["HttpClient"]
 
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 
+#: Per-request timeout (seconds). LLM providers (notably Gemini flash with
+#: thinking enabled) can take well over 30s for a long JSON prompt, so the
+#: default is generous and can be tuned with ``HTTP_TIMEOUT``.
+DEFAULT_TIMEOUT = 90.0
+
+
+def _default_timeout() -> float:
+    raw = os.environ.get("HTTP_TIMEOUT", "").strip()
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    return DEFAULT_TIMEOUT
+
 
 def _error_detail(resp: httpx.Response) -> str:
     """Return a short one-line summary of a provider's error body.
@@ -34,7 +50,10 @@ def _error_detail(resp: httpx.Response) -> str:
         data = resp.json()
     except ValueError:
         text = resp.text.strip()
-        return f": {text[:300]}" if text else ""
+        # HTML error pages (e.g. Reddit's 403) add noise, not information.
+        if not text or text.startswith("<"):
+            return ""
+        return f": {text[:300]}"
     if isinstance(data, dict):
         error = data.get("error")
         if isinstance(error, dict) and error.get("message"):
@@ -49,7 +68,7 @@ class HttpClient:
     def __init__(
         self,
         *,
-        timeout: float = 30.0,
+        timeout: float | None = None,
         max_retries: int = 3,
         backoff_base: float = 0.5,
         cache_dir: str | Path | None = None,
@@ -57,6 +76,8 @@ class HttpClient:
         headers: dict[str, str] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        if timeout is None:
+            timeout = _default_timeout()
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.cache_dir = Path(cache_dir) if cache_dir is not None else None

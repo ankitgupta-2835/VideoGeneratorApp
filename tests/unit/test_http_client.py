@@ -107,6 +107,23 @@ def test_error_includes_provider_message():
     assert "not found for API version v1beta" in str(excinfo.value)
 
 
+def test_error_skips_html_body():
+    """A 403 HTML page must not be pasted into the error message."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403,
+            text="<html><body>blocked</body></html>",
+            headers={"content-type": "text/html"},
+        )
+
+    client, _ = make_client(handler)
+    with pytest.raises(ProviderError) as excinfo:
+        client.get_json("https://api.test/x")
+    assert "403" in str(excinfo.value)
+    assert "blocked" not in str(excinfo.value)
+
+
 def test_network_error_raises_provider_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("boom")
@@ -170,3 +187,22 @@ def test_post_json_sends_body():
     client, _ = make_client(handler)
     assert client.post_json("https://api.test/x", json_body={"q": 1}) == {"echo": True}
     assert b'"q"' in captured["body"]
+
+
+def test_default_timeout_is_generous(monkeypatch: pytest.MonkeyPatch):
+    """LLM prompts routinely exceed 30s; the default must not cut them off."""
+    monkeypatch.delenv("HTTP_TIMEOUT", raising=False)
+    client = HttpClient()
+    try:
+        assert client._client.timeout.read == 90.0
+    finally:
+        client.close()
+
+
+def test_http_timeout_env_override(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("HTTP_TIMEOUT", "7.5")
+    client = HttpClient()
+    try:
+        assert client._client.timeout.read == 7.5
+    finally:
+        client.close()
