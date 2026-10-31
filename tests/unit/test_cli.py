@@ -44,7 +44,9 @@ def test_live_run_uses_injected_builder(tmp_path: Path, capsys):
         ["--category", "ai_tech", "--work-dir", str(tmp_path)],
         live_builder=builder,
         secrets_loader=lambda: SimpleNamespace(),
-        config_loader=lambda: SimpleNamespace(settings=SimpleNamespace()),
+        config_loader=lambda: SimpleNamespace(
+            settings=SimpleNamespace(), categories=SimpleNamespace()
+        ),
     )
 
     out = capsys.readouterr().out

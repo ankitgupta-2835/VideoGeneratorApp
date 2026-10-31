@@ -33,7 +33,7 @@ def _fake_secrets():  # noqa: ANN202 - test helper
 
 
 def _fake_config():  # noqa: ANN202 - test helper
-    return SimpleNamespace(settings=SimpleNamespace())
+    return SimpleNamespace(settings=SimpleNamespace(), categories=SimpleNamespace())
 
 
 def test_live_run_returns_zero_and_prints_paths(tmp_path: Path, capsys):
@@ -51,6 +51,10 @@ def test_live_run_returns_zero_and_prints_paths(tmp_path: Path, capsys):
     assert builder.calls, "live builder was not called"
     assert builder.calls[0]["demo"] is False
     assert builder.calls[0]["max_scenes"] is None
+    # The live builder is given the category (and its config) so it can wire
+    # category-scoped trend sources.
+    assert builder.calls[0]["category"] == "ai_tech"
+    assert builder.calls[0]["categories"] is not None
     assert "status: ok" in out
     # long video + short artifacts are printed as explicit paths
     assert f"long video: {tmp_path / 'stages' / 'assemble.txt'}" in out

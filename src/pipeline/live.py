@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from src.audio.tts import EdgeTTSBackend, TTSBackend
-from src.config import Settings
+from src.config import Categories, Category, Settings
 from src.errors import ProviderError
 from src.http_client import HttpClient
 from src.llm.client import LLMClient, build_llm_client
@@ -37,6 +37,11 @@ from src.pipeline.stages import build_pipeline
 from src.rerun.controller import Stage
 from src.secrets import Secrets
 from src.store.db import Database
+from src.trends.base import TrendSource
+from src.trends.google_trends import GoogleTrendsSource
+from src.trends.hackernews import HackerNewsSource
+from src.trends.news_rss import NewsRssSource
+from src.trends.reddit import RedditSource
 from src.visuals.hero_video import HeroVideoClient, build_providers
 from src.visuals.images_pollinations import PollinationsImageClient
 from src.visuals.stock import PexelsClient, PixabayClient
@@ -90,6 +95,34 @@ def _build_stock_client(secrets: Secrets, http: HttpClient) -> Any:
     return None
 
 
+def _category_config(categories: Categories | None, category: str | None) -> Category | None:
+    """Look up one category's config, tolerating a missing/unknown name."""
+    if categories is None or category is None:
+        return None
+    return categories.categories.get(category)
+
+
+def _build_trend_sources(
+    http: HttpClient, *, categories: Categories | None, category: str | None
+) -> list[TrendSource]:
+    """Build the keyless trend sources used by the live pipeline.
+
+    Google Trends, Hacker News and Google News RSS need no credentials. A
+    category-scoped :class:`RedditSource` is added when the category config
+    provides subreddits. The scout fails over per source, so one throttled
+    provider cannot sink the run.
+    """
+    sources: list[TrendSource] = [
+        GoogleTrendsSource(http),
+        HackerNewsSource(http),
+        NewsRssSource(http),
+    ]
+    category_cfg = _category_config(categories, category)
+    if category_cfg is not None and category_cfg.subreddits:
+        sources.append(RedditSource(http, subreddits=list(category_cfg.subreddits)))
+    return sources
+
+
 def build_live_stages(
     *,
     secrets: Secrets,
@@ -97,6 +130,8 @@ def build_live_stages(
     out_dir: Path,
     demo: bool = False,
     max_scenes: int | None = None,
+    categories: Categories | None = None,
+    category: str | None = None,
     http: HttpClient | None = None,
     notifier: Notifier | None = None,
     store: Database | None = None,
@@ -120,6 +155,10 @@ def build_live_stages(
     """
     cache_dir = Path(settings.paths.assets_dir) / "cache"
     http = http or HttpClient(cache_dir=cache_dir)
+
+    # The TREND stage is only wired when the pipeline receives sources; without
+    # this the live/demo run skipped TREND and failed at ANGLE.
+    trend_sources = _build_trend_sources(http, categories=categories, category=category)
 
     llm = _build_llm(secrets, http=http, llm=llm)
     notifier = notifier if notifier is not None else build_notifier(secrets, http=http)
@@ -155,6 +194,7 @@ def build_live_stages(
         hero_client=hero_client,
         stock_client=stock_client,
         http=http,
+        trend_sources=trend_sources,
         out_dir=Path(out_dir),
         max_scenes=max_scenes,
         dry_run=demo,
