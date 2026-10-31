@@ -136,6 +136,11 @@ def _write_review_page(state: RunState, work_dir: Path) -> Path | None:
     return build_review_page([attempt], work_dir / "review.html")
 
 
+def _progress(message: str) -> None:
+    """Print one progress line immediately so notebooks stream it live."""
+    print(message, flush=True)
+
+
 def _run_live(
     args: argparse.Namespace,
     *,
@@ -165,7 +170,14 @@ def _run_live(
         return 1
 
     orchestrator = Orchestrator(stages)
-    state = orchestrator.run(args.category, language=language, work_dir=work_dir, run_id=run_id)
+    _progress(f"run {run_id} | category {args.category} | language {language}")
+    state = orchestrator.run(
+        args.category,
+        language=language,
+        work_dir=work_dir,
+        run_id=run_id,
+        progress=_progress,
+    )
 
     for stage in STAGE_ORDER:
         print(f"{stage.value}: {state.stages.get(stage.value)}")
@@ -199,7 +211,11 @@ def main(
 
         orchestrator = Orchestrator(build_dry_run_stages())
         state = orchestrator.run(
-            args.category, language=args.language, work_dir=work_dir, run_id=run_id
+            args.category,
+            language=args.language,
+            work_dir=work_dir,
+            run_id=run_id,
+            progress=_progress,
         )
 
         for stage in STAGE_ORDER:

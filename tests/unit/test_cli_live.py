@@ -63,6 +63,22 @@ def test_live_run_returns_zero_and_prints_paths(tmp_path: Path, capsys):
     assert "review page:" in out
 
 
+def test_live_run_streams_progress_before_summary(tmp_path: Path, capsys):
+    code = main(
+        ["--category", "ai_tech", "--work-dir", str(tmp_path)],
+        live_builder=_BuilderSpy(),
+        secrets_loader=_fake_secrets,
+        config_loader=_fake_config,
+    )
+
+    out = capsys.readouterr().out
+    assert code == 0
+    # Per-stage progress must appear before the final summary (otherwise a
+    # notebook shows nothing until the whole run ends).
+    assert out.index("[ 1/15] trend ok") < out.index("status: ok")
+    assert "[ 2/15] angle ok" in out
+
+
 def test_demo_run_returns_zero_and_is_bounded(tmp_path: Path, capsys):
     builder = _BuilderSpy()
 

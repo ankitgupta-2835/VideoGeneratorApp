@@ -42,6 +42,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from time import monotonic
 
 from pydantic import BaseModel, Field
 
@@ -143,12 +144,17 @@ class Orchestrator:
         attempt_no: int = 1,
         work_dir: Path,
         run_id: str | None = None,
+        progress: Callable[[str], None] | None = None,
     ) -> RunState:
         """Execute the wired stages and return the resulting :class:`RunState`.
 
         ``run_id`` may be supplied by the caller (e.g. the CLI) so the id it
         prints and the one persisted/used for ``work_dir`` are identical; when
         omitted a fresh id is generated.
+
+        ``progress`` receives one line per stage start/finish (plus failure
+        reasons). The CLI wires it to ``print(..., flush=True)`` so a notebook
+        shows progress as it happens instead of everything at the end.
         """
         run_id = run_id or new_run_id(category)
         state = RunState(
@@ -170,18 +176,28 @@ class Orchestrator:
         if self._store is not None:
             self._store.create_run(run_id, category, language)
 
-        for stage in STAGE_ORDER:
+        total = len(STAGE_ORDER)
+        for index, stage in enumerate(STAGE_ORDER, start=1):
             fn = self._stages.get(stage)
             if fn is None:
                 state.stages[stage.value] = StageStatus.SKIPPED.value
                 continue
 
+            label = f"[{index:>2}/{total}] {stage.value}"
+            if progress is not None:
+                progress(f"{label} ...")
+            started = monotonic()
             ok, artifact, notes = self._run_stage(stage, fn, ctx)
+            elapsed = monotonic() - started
             state.notes.extend(notes)
             ctx.notes.extend(notes)
 
             if not ok:
                 state.stages[stage.value] = StageStatus.FAIL.value
+                if progress is not None:
+                    progress(f"{label} FAILED ({elapsed:.1f}s)")
+                    for note in notes:
+                        progress(f"       reason: {note}")
                 break
 
             state.stages[stage.value] = StageStatus.OK.value
@@ -189,6 +205,8 @@ class Orchestrator:
             if artifact is not None:
                 state.artifacts[stage.value] = artifact
                 ctx.artifacts[stage.value] = artifact
+            if progress is not None:
+                progress(f"{label} ok ({elapsed:.1f}s)")
             self._fire_checkpoint(stage, artifact, state)
         else:
             state.status = "ok"
