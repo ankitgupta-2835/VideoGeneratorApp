@@ -343,3 +343,60 @@ def test_redo_target_is_attempted_at_most_once(tmp_path: Path):
 
     assert state.status == "failed"
     assert calls == {"visuals": 2, "qa": 2}
+
+
+def test_stage_may_request_a_self_redo(tmp_path: Path):
+    calls = {"voice": 0, "captions": 0}
+
+    def voice(ctx: RunContext) -> StageResult:
+        calls["voice"] += 1
+        if calls["voice"] == 1:
+            return StageResult(status="fail", notes=["tts down"], redo_from="voice")
+        return StageResult(status="ok")
+
+    def captions(ctx: RunContext) -> StageResult:
+        calls["captions"] += 1
+        return StageResult(status="ok")
+
+    orch = Orchestrator({Stage.VOICE: voice, Stage.CAPTIONS: captions})
+    state = orch.run("ai_tech", work_dir=tmp_path)
+
+    assert state.status == "ok"
+    assert calls == {"voice": 2, "captions": 1}
+
+
+def test_successful_stage_can_request_one_soft_retry(tmp_path: Path):
+    calls = {"visuals": 0, "motion": 0}
+
+    def visuals(ctx: RunContext) -> StageResult:
+        calls["visuals"] += 1
+        # Ask for a soft retry only on the first attempt.
+        redo = "visuals" if calls["visuals"] == 1 else None
+        return StageResult(status="ok", redo_from=redo)
+
+    def motion(ctx: RunContext) -> StageResult:
+        calls["motion"] += 1
+        return StageResult(status="ok")
+
+    orch = Orchestrator({Stage.VISUALS: visuals, Stage.MOTION: motion})
+    state = orch.run("ai_tech", work_dir=tmp_path)
+
+    assert state.status == "ok"
+    assert calls == {"visuals": 2, "motion": 1}
+
+
+def test_exception_retries_the_same_stage_once(tmp_path: Path):
+    calls = {"assemble": 0}
+
+    def assemble(ctx: RunContext) -> StageResult:
+        calls["assemble"] += 1
+        if calls["assemble"] == 1:
+            raise RuntimeError("ffmpeg hiccup")
+        return StageResult(status="ok")
+
+    orch = Orchestrator({Stage.ASSEMBLE: assemble})
+    state = orch.run("ai_tech", work_dir=tmp_path)
+
+    assert state.status == "ok"
+    assert calls["assemble"] == 2
+    assert any("ffmpeg hiccup" in note for note in state.notes)

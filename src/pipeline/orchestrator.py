@@ -187,6 +187,7 @@ class Orchestrator:
         total = len(STAGE_ORDER)
         index = 0
         redos: dict[str, int] = {}
+        soft_redos: dict[str, int] = {}
         while index < total:
             stage = STAGE_ORDER[index]
             fn = self._stages.get(stage)
@@ -221,6 +222,18 @@ class Orchestrator:
                     for note in notes:
                         progress(f"       reason: {note}")
                 break
+
+            # A stage may succeed yet ask for one more attempt (e.g. every
+            # visual degraded to a placeholder). Soft redos never fail the run:
+            # if the retry is exhausted the successful result is kept.
+            soft_target = self._redo_target(redo_from, index)
+            if soft_target is not None and soft_redos.get(soft_target.value, 0) < self._max_redos:
+                soft_redos[soft_target.value] = soft_redos.get(soft_target.value, 0) + 1
+                if progress is not None:
+                    progress(f"{label} ok ({elapsed:.1f}s) - " f"retrying from {soft_target.value}")
+                self._reset_from(state, soft_target)
+                index = STAGE_ORDER.index(soft_target)
+                continue
 
             state.stages[stage.value] = StageStatus.OK.value
             state.completed.append(stage.value)
@@ -260,7 +273,9 @@ class Orchestrator:
                 result = fn(ctx)
             except Exception as exc:  # noqa: BLE001 - a stage may raise anything
                 notes.append(f"{stage.value} raised: {exc}")
-                return False, None, notes, None
+                # Retry the same stage once; a later stage may still depend on
+                # its artifact, so retrying here is cheaper than the whole run.
+                return False, None, notes, stage.value
 
             if not isinstance(result, StageResult):
                 notes.append(f"{stage.value} returned a non-StageResult: {result!r}")
@@ -269,7 +284,7 @@ class Orchestrator:
             notes.extend(result.notes)
 
             if result.status == "ok":
-                return True, result.artifact, notes, None
+                return True, result.artifact, notes, result.redo_from
             if result.status == "fail":
                 notes.append(f"{stage.value} failed")
                 return False, None, notes, result.redo_from
@@ -289,9 +304,9 @@ class Orchestrator:
     def _redo_target(self, redo_from: str | None, current: int) -> Stage | None:
         """Validate a stage's requested redo target.
 
-        Only an earlier, wired stage may be replayed; requesting the current
-        stage (or a later/unknown one) is ignored so a broken stage cannot
-        loop on itself.
+        The target must be wired and no later than the current stage. A stage
+        may name itself (a bounded retry of just that artifact); the per-target
+        redo budget prevents a deterministic failure from looping forever.
         """
         if not redo_from:
             return None
@@ -301,7 +316,7 @@ class Orchestrator:
             return None
         if target not in self._stages:
             return None
-        if STAGE_ORDER.index(target) >= current:
+        if STAGE_ORDER.index(target) > current:
             return None
         return target
 
