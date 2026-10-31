@@ -157,6 +157,8 @@ def _run_live(
             out_dir=work_dir,
             demo=args.demo,
             max_scenes=max_scenes,
+            categories=config.categories,
+            category=args.category,
         )
     except VideoGenError as exc:
         print(f"error: {exc}")
