@@ -29,7 +29,9 @@ __all__ = [
 
 # Default free-tier models.
 DEFAULT_MODELS = {
-    "gemini": "gemini-2.5-flash",
+    # A floating alias: Google retires pinned Gemini versions for new users
+    # (2.0-flash and 2.5-flash both die this way). The alias keeps working.
+    "gemini": "gemini-flash-latest",
     "groq": "llama-3.3-70b-versatile",
     "openrouter": "meta-llama/llama-3.3-70b-instruct:free",
 }

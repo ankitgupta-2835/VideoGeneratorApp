@@ -122,7 +122,9 @@ def test_build_llm_client_uses_llm_model_override():
     assert client.model == "gemini-flash-latest"
 
 
-def test_gemini_default_model_is_not_the_retired_one():
+def test_gemini_default_model_is_a_floating_alias():
+    """Pinned Gemini versions get retired for new users; the default must be
+    an alias that keeps resolving (e.g. ``gemini-flash-latest``)."""
     from src.llm.client import DEFAULT_MODELS
 
-    assert DEFAULT_MODELS["gemini"] != "gemini-2.0-flash"
+    assert DEFAULT_MODELS["gemini"].endswith("-latest")
