@@ -61,7 +61,7 @@ from typing import Any
 
 from src.agents.angle_strategist import AngleStrategistAgent
 from src.agents.base import Agent, AgentResult
-from src.agents.compliance import ComplianceAgent, ComplianceInput
+from src.agents.compliance import ComplianceAgent, ComplianceInput, ComplianceReport
 from src.agents.localizer import LocalizerAgent
 from src.agents.publisher import PublisherAgent, PublishInput
 from src.agents.qa_critic import QaCriticAgent, QaInput
@@ -292,6 +292,7 @@ class Pipeline:
             duration_target_sec=self._target_duration_sec,
             min_duration_sec=self._min_duration_sec,
             max_duration_sec=self._max_duration_sec,
+            compliance_feedback=self._compliance_feedback(),
         )
         agent = ScriptwriterAgent(self._llm)
         result = agent.run(request)
@@ -301,6 +302,27 @@ class Pipeline:
         blueprint = self._truncate_blueprint(blueprint)
         self._bag[Stage.SCRIPT] = blueprint
         return self._agent_result(result, artifact=blueprint.meta.title)
+
+    def _compliance_feedback(self) -> list[str]:
+        """Return blocking findings from a rejected draft, once.
+
+        The compliance stage stores its report even when it fails, so a redo
+        that starts at ``script`` can tell the writer exactly what to avoid.
+        The report is consumed so later, unrelated script runs are not given
+        stale feedback.
+        """
+        report = self._bag.pop(Stage.COMPLIANCE, None)
+        if not isinstance(report, ComplianceReport) or report.passed:
+            return []
+        findings: list[str] = []
+        for flag in report.flags:
+            if flag.severity != "block":
+                continue
+            if flag.scene_index is not None:
+                findings.append(f"scene {flag.scene_index}: {flag.message}")
+            else:
+                findings.append(flag.message)
+        return findings
 
     def _truncate_blueprint(self, blueprint: Blueprint) -> Blueprint:
         """Cap the blueprint to ``max_scenes`` (deterministic: keep the first N).
@@ -341,9 +363,15 @@ class Pipeline:
             )
         )
         if result.status != "ok" or not result.data.passed:
+            if result.data is not None:
+                # Keep the rejected report so the script stage can consume the
+                # blocking flags when the orchestrator replays from `script`.
+                self._bag[Stage.COMPLIANCE] = result.data
+            redo_from = Stage.SCRIPT.value if Stage.SCRIPT in self._stages else None
             return StageResult(
                 status="fail",
                 notes=[*result.notes, "compliance gate not passed"],
+                redo_from=redo_from,
             )
         self._bag[Stage.COMPLIANCE] = result.data
         return self._agent_result(result, artifact=result.data.summary)
@@ -363,7 +391,13 @@ class Pipeline:
             )
         )
         if result.status != "ok":
-            return self._agent_result(result)
+            # Audio is the only broken artifact: replay voice (and, because it
+            # is downstream, captions) without redoing the topic or script.
+            return StageResult(
+                status="fail",
+                notes=list(result.notes),
+                redo_from=Stage.VOICE.value,
+            )
         track: AudioTrack = result.data
         self._bag[Stage.VOICE] = track
         return self._agent_result(result, artifact=track.path)
@@ -392,9 +426,33 @@ class Pipeline:
         )
         result = agent.run(VisualInput(blueprint=blueprint, out_dir=self._out_dir / "visuals"))
         if result.status != "ok":
-            return self._agent_result(result)
-        self._bag[Stage.VISUALS] = result.data
-        return self._agent_result(result, artifact=str(self._out_dir / "visuals"))
+            return StageResult(
+                status="fail",
+                notes=list(result.notes),
+                redo_from=Stage.VISUALS.value,
+            )
+        assets = result.data
+        if not assets.items:
+            return StageResult(
+                status="fail",
+                notes=[*result.notes, "no scene visuals were produced"],
+                redo_from=Stage.VISUALS.value,
+            )
+        self._bag[Stage.VISUALS] = assets
+        notes = list(result.notes)
+        redo_from: str | None = None
+        if all(asset.provider == "placeholder" for asset in assets.items):
+            # Image generation degraded to placeholders for every scene. Ask
+            # the orchestrator for one soft retry of visuals only; if the
+            # providers are still unavailable the placeholder run continues.
+            notes.append("every scene used a placeholder; retrying image generation once")
+            redo_from = Stage.VISUALS.value
+        return StageResult(
+            status="ok",
+            artifact=str(self._out_dir / "visuals"),
+            notes=notes,
+            redo_from=redo_from,
+        )
 
     def _stage_motion(self, ctx: RunContext) -> StageResult:
         assets = self._bag[Stage.VISUALS]

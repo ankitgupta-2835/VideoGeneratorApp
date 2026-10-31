@@ -52,6 +52,9 @@ class ScriptRequest(BaseModel):
     max_duration_sec: int = 330
     facts: list[str] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+    #: Blocking compliance findings from a rejected draft. When present the
+    #: writer is asked to rewrite the script so none of them recur.
+    compliance_feedback: list[str] = Field(default_factory=list)
 
 
 class ScriptwriterAgent(Agent):
@@ -84,6 +87,13 @@ class ScriptwriterAgent(Agent):
         if payload.sources:
             lines.append("Sources:")
             lines.extend(f"- {source}" for source in payload.sources)
+        if payload.compliance_feedback:
+            lines.append(
+                "A previous draft was rejected by the compliance gate. "
+                "Rewrite the script so that none of these violations recur; "
+                "remove or rephrase the flagged wording instead of repeating it:"
+            )
+            lines.extend(f"- {finding}" for finding in payload.compliance_feedback)
         lines.append('Set meta.language to "en".')
         return "\n".join(lines)
 

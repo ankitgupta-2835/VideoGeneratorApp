@@ -96,3 +96,12 @@ def test_prompt_includes_title_and_facts():
     assert "The Rise of Local LLMs" in prompt
     assert "7B models run on laptops" in prompt
     assert "why small models now matter" in prompt
+
+
+def test_prompt_includes_compliance_feedback():
+    fake = FakeLLMClient(replies=[blueprint_json([40.0, 40.0, 40.0])])
+    feedback = ["scene 2: banned medical claim 'cure' in scene 2"]
+    ScriptwriterAgent(fake).run(request(compliance_feedback=feedback))
+    prompt = fake.calls[0]["prompt"]
+    assert "compliance gate" in prompt
+    assert "banned medical claim 'cure'" in prompt
