@@ -44,10 +44,13 @@ def test_edge_backend_raises_provider_error_when_edge_tts_absent(monkeypatch, tm
 
 
 def test_edge_backend_uses_stub_module(monkeypatch, tmp_path):
+    seen: dict[str, object] = {}
+
     class FakeCommunicate:
-        def __init__(self, text: str, voice: str) -> None:
+        def __init__(self, text: str, voice: str, **kwargs: object) -> None:
             self.text = text
             self.voice = voice
+            seen.update(kwargs)
 
         async def stream(self):
             yield {"type": "audio", "data": b"\x00\x01"}
@@ -74,8 +77,35 @@ def test_edge_backend_uses_stub_module(monkeypatch, tmp_path):
 
     assert out.read_bytes() == b"\x00\x01\x02\x03"
     assert [w.word for w in words] == ["Hello", "world"]
+    # edge-tts >=7 defaults to sentence boundaries; we must ask for words,
+    # otherwise captions end up empty.
+    assert seen.get("boundary") == "WordBoundary"
     # offsets are in 100-nanosecond ticks -> divided by 1e7
     assert words[0].start_sec == pytest.approx(1.0)
     assert words[0].end_sec == pytest.approx(1.5)
     assert words[1].start_sec == pytest.approx(2.0)
     assert words[1].end_sec == pytest.approx(2.3)
+
+
+def test_edge_backend_tolerates_legacy_communicate(monkeypatch, tmp_path):
+    class LegacyCommunicate:
+        def __init__(self, text: str, voice: str) -> None:
+            pass
+
+        async def stream(self):
+            yield {"type": "audio", "data": b"\x00"}
+            yield {
+                "type": "WordBoundary",
+                "offset": 0,
+                "duration": 10_000_000,
+                "text": "Hi",
+            }
+
+    stub = types.ModuleType("edge_tts")
+    stub.Communicate = LegacyCommunicate  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "edge_tts", stub)
+
+    out = tmp_path / "legacy.mp3"
+    words = EdgeTTSBackend().synthesize("Hi", voice="en-US-AriaNeural", out_path=out)
+
+    assert [w.word for w in words] == ["Hi"]

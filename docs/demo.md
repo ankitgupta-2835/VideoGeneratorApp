@@ -230,6 +230,7 @@ Be honest about the free tier before you scale up:
 | `ProviderError: ...` mid-run | provider call failed — bad/expired key, or a free-tier rate limit | check the key and quotas; wait and re-run, or lower `--max-scenes` |
 | `... -> HTTP 404: ... no longer available to new users` | the pinned Gemini model was retired | set `LLM_MODEL` in `.env` to the model named in the message (or `gemini-flash-latest`) and re-run |
 | `... failed after N attempts: The read operation timed out` | the provider was slow (long prompt / model thinking) | raise the limit with `HTTP_TIMEOUT=180` in `.env` and re-run |
+| `scene N: ... HTTP 402: Free limit reached` | Pollinations free tier (1 image / 45 s) | the run waits once, then uses a placeholder; set `POLLINATIONS_TOKEN` (or Pexels/Pixabay keys) for real images |
 | `ffmpeg: not found` | system deps missing | re-run `bash deploy/oracle/setup.sh`, or `sudo apt-get install -y ffmpeg` |
 | Run finds no topic / empty trends | trend sources are throttled or returned nothing | re-run later; try another `--category`; verify outbound HTTPS from the VM |
 | `--demo` ignored / unknown flag | older checkout without demo support | `git pull` on the VM and re-run `setup.sh` |

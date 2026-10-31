@@ -117,7 +117,14 @@ class EdgeTTSBackend(TTSBackend):
     async def _synthesize(
         edge_tts: Any, text: str, *, voice: str, out_path: Path
     ) -> list[WordTiming]:
-        communicate = edge_tts.Communicate(text, voice)
+        # edge-tts >=7 defaults to *sentence* boundaries, which yields audio but
+        # no WordBoundary events (so captions come out empty). Ask for word
+        # boundaries explicitly; older versions lack the kwarg but always emit
+        # them.
+        try:
+            communicate = edge_tts.Communicate(text, voice, boundary="WordBoundary")
+        except TypeError:  # pragma: no cover - legacy edge-tts
+            communicate = edge_tts.Communicate(text, voice)
         audio = bytearray()
         timings: list[WordTiming] = []
         async for chunk in communicate.stream():
