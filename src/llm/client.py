@@ -29,7 +29,7 @@ __all__ = [
 
 # Default free-tier models.
 DEFAULT_MODELS = {
-    "gemini": "gemini-2.0-flash",
+    "gemini": "gemini-2.5-flash",
     "groq": "llama-3.3-70b-versatile",
     "openrouter": "meta-llama/llama-3.3-70b-instruct:free",
 }
@@ -218,6 +218,9 @@ def build_llm_client(
     key = secrets.llm_api_key.get_secret_value()
     http = http or HttpClient()
     provider = secrets.llm_provider
+    # ``LLM_MODEL`` (see Secrets.llm_model) overrides the provider default when
+    # the caller does not pass an explicit model.
+    model = model or secrets.llm_model
     if provider == "gemini":
         return GeminiClient(http, key, model or DEFAULT_MODELS["gemini"])
     if provider == "groq":
