@@ -231,6 +231,8 @@ Be honest about the free tier before you scale up:
 | `... -> HTTP 404: ... no longer available to new users` | the pinned Gemini model was retired | set `LLM_MODEL` in `.env` to the model named in the message (or `gemini-flash-latest`) and re-run |
 | `... failed after N attempts: The read operation timed out` | the provider was slow (long prompt / model thinking) | raise the limit with `HTTP_TIMEOUT=180` in `.env` and re-run |
 | `scene N: ... HTTP 402: Free limit reached` | Pollinations free tier (1 image / 45 s) | the run waits once, then uses a placeholder; set `POLLINATIONS_TOKEN` (or Pexels/Pixabay keys) for real images |
+| `visuals/` shows fewer files than scenes | real generated images live in the content-hash cache (`data/assets/cache/images/`) and motion scenes are `.mp4`, not `.jpg` | every asset is now copied to `visuals/scene_001.<ext>`, `scene_002.<ext>`, ... and listed in `visuals/manifest.json` |
+| Unsure which clips were joined, or in what order | the join step is opaque by default | read `motion/manifest.json` (scene → clip → duration) and `assemble/manifest.json` (ordered clip list); both are written per run |
 | `ffmpeg: not found` | system deps missing | re-run `bash deploy/oracle/setup.sh`, or `sudo apt-get install -y ffmpeg` |
 | Run finds no topic / empty trends | trend sources are throttled or returned nothing | re-run later; try another `--category`; verify outbound HTTPS from the VM |
 | `--demo` ignored / unknown flag | older checkout without demo support | `git pull` on the VM and re-run `setup.sh` |

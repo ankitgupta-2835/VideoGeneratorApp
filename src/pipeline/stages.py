@@ -112,6 +112,14 @@ def _caption_cues(path: Path) -> int:
     return text.count("-->")
 
 
+def _display_path(path: Path, base: Path) -> str:
+    """Return ``path`` relative to ``base`` when possible, else the full path."""
+    try:
+        return str(path.resolve().relative_to(base.resolve()))
+    except ValueError:
+        return str(path)
+
+
 class Pipeline:
     """Holds the artifact bag and builds the wired stage mapping for one run.
 
@@ -438,10 +446,52 @@ class Pipeline:
                 notes=[*result.notes, "no scene visuals were produced"],
                 redo_from=Stage.VISUALS.value,
             )
-        self._bag[Stage.VISUALS] = assets
+
+        # Give every scene a stable, scene-numbered copy inside the run folder.
+        # Real provider images otherwise live only in the shared content-hash
+        # cache (``data/assets/cache/images/<sha>.jpg``), which makes a run look
+        # like it produced fewer images than it did.
+        visuals_dir = self._out_dir / "visuals"
+        visuals_dir.mkdir(parents=True, exist_ok=True)
+        items: list[Any] = []
+        manifest: list[dict[str, Any]] = []
         notes = list(result.notes)
+        for asset in assets.items:
+            source = Path(asset.path)
+            suffix = source.suffix.lower() or ".jpg"
+            dest = visuals_dir / f"scene_{asset.index:03d}{suffix}"
+            if source.resolve() != dest.resolve():
+                if source.is_file():
+                    shutil.copy2(source, dest)
+                else:
+                    notes.append(f"scene {asset.index}: asset missing at {source}")
+                    dest = source
+            items.append(asset.model_copy(update={"path": str(dest)}))
+            manifest.append(
+                {
+                    "index": asset.index,
+                    "kind": asset.kind,
+                    "provider": asset.provider,
+                    "placeholder": asset.provider == "placeholder",
+                    "scene_file": _display_path(dest, self._out_dir),
+                    "source": _display_path(source, self._out_dir),
+                }
+            )
+
+        assets = assets.model_copy(update={"items": items})
+        self._bag[Stage.VISUALS] = assets
+        manifest_path = visuals_dir / "manifest.json"
+        manifest_path.write_text(json.dumps({"scenes": manifest}, indent=2), encoding="utf-8")
+
+        placeholders = sum(1 for asset in items if asset.provider == "placeholder")
+        notes.append(
+            f"{len(items)} scene asset(s): {len(items) - placeholders} generated, "
+            f"{placeholders} placeholder"
+        )
+        notes.append(f"manifest: {_display_path(manifest_path, self._out_dir)}")
+
         redo_from: str | None = None
-        if all(asset.provider == "placeholder" for asset in assets.items):
+        if items and placeholders == len(items):
             # Image generation degraded to placeholders for every scene. Ask
             # the orchestrator for one soft retry of visuals only; if the
             # providers are still unavailable the placeholder run continues.
@@ -449,7 +499,7 @@ class Pipeline:
             redo_from = Stage.VISUALS.value
         return StageResult(
             status="ok",
-            artifact=str(self._out_dir / "visuals"),
+            artifact=str(visuals_dir),
             notes=notes,
             redo_from=redo_from,
         )
@@ -457,20 +507,61 @@ class Pipeline:
     def _stage_motion(self, ctx: RunContext) -> StageResult:
         assets = self._bag[Stage.VISUALS]
         blueprint = self._blueprint()
+
+        ordered = sorted(assets.items, key=lambda asset: asset.index)
+        present = {asset.index for asset in ordered}
+        missing = [scene.index for scene in blueprint.scenes if scene.index not in present]
+        if missing:
+            return StageResult(
+                status="fail",
+                notes=[f"no visual for scene(s) {missing}; redoing visuals"],
+                redo_from=Stage.VISUALS.value,
+            )
+
+        # Prefer the narration's per-scene spoken spans over the blueprint's
+        # estimates: the voice track is what the final mix is cut to, so the
+        # clips must add up to the same length or the last scenes get trimmed.
         durations = {scene.index: scene.duration_sec for scene in blueprint.scenes}
+        track = self._bag.get(Stage.VOICE)
+        if isinstance(track, AudioTrack) and track.scenes:
+            for timing in track.scenes:
+                span = timing.end_sec - timing.start_sec
+                if span > 0:
+                    durations[timing.index] = span
+
+        motion_dir = self._out_dir / "motion"
+        motion_dir.mkdir(parents=True, exist_ok=True)
         clips: list[Path] = []
-        notes: list[str] = []
-        for asset in assets.items:
+        manifest: list[dict[str, Any]] = []
+        for asset in ordered:
             path = Path(asset.path)
+            duration = durations.get(asset.index, 3.0)
             if path.suffix.lower() in _VIDEO_SUFFIXES:
-                clips.append(path)
-                continue
-            out = self._out_dir / "motion" / f"scene_{asset.index:03d}.mp4"
-            clip = self._motion_renderer(path, out, durations.get(asset.index, 3.0))
-            clips.append(Path(clip))
-        notes.append(f"{len(clips)} clip(s)")
+                clip = path
+            else:
+                out = motion_dir / f"scene_{asset.index:03d}.mp4"
+                clip = Path(self._motion_renderer(path, out, duration))
+            clips.append(clip)
+            manifest.append(
+                {
+                    "index": asset.index,
+                    "source": _display_path(path, self._out_dir),
+                    "clip": _display_path(clip, self._out_dir),
+                    "duration_sec": round(duration, 3),
+                    "kind": asset.kind,
+                    "provider": asset.provider,
+                }
+            )
+
+        manifest_path = motion_dir / "manifest.json"
+        manifest_path.write_text(json.dumps({"clips": manifest}, indent=2), encoding="utf-8")
+        total = sum(float(entry["duration_sec"]) for entry in manifest)
+        notes = [
+            f"{len(clips)} clip(s), {total:.1f}s timeline",
+            f"manifest: {_display_path(manifest_path, self._out_dir)}",
+        ]
         self._bag[Stage.MOTION] = clips
-        return StageResult(status="ok", artifact=str(self._out_dir / "motion"), notes=notes)
+        return StageResult(status="ok", artifact=str(motion_dir), notes=notes)
 
     def _clips(self) -> list[Path]:
         clips = self._bag.get(Stage.MOTION)
@@ -489,15 +580,37 @@ class Pipeline:
 
     def _stage_assemble(self, ctx: RunContext) -> StageResult:
         out = self._out_dir / "video.mp4"
+        clips = self._clips()
+        narration = self._narration_path()
         video = assemble(
-            self._clips(),
+            clips,
             out,
             self._out_dir / "assemble",
-            narration=self._narration_path(),
+            narration=narration,
             music=self._music,
         )
         self._bag[Stage.ASSEMBLE] = Path(video)
-        return StageResult(status="ok", artifact=str(video))
+        manifest_path = self._out_dir / "assemble" / "manifest.json"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "clips": [_display_path(clip, self._out_dir) for clip in clips],
+                    "count": len(clips),
+                    "narration": (_display_path(narration, self._out_dir) if narration else None),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return StageResult(
+            status="ok",
+            artifact=str(video),
+            notes=[
+                f"{len(clips)} clip(s) joined in scene order",
+                f"manifest: {_display_path(manifest_path, self._out_dir)}",
+            ],
+        )
 
     def _segments(self) -> list[Segment]:
         segments: list[Segment] = []
