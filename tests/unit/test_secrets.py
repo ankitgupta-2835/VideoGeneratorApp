@@ -51,3 +51,17 @@ def test_secret_values_masked_in_repr():
 def test_env_is_gitignored():
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert any(line.strip() in {".env", ".env*"} for line in gitignore.splitlines())
+
+
+def test_llm_model_override(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-123")
+    monkeypatch.setenv("LLM_MODEL", "gemini-2.5-flash")
+    secrets = load_secrets(MISSING_ENV)
+    assert secrets.llm_model == "gemini-2.5-flash"
+
+
+def test_llm_model_defaults_to_none(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-123")
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    secrets = load_secrets(MISSING_ENV)
+    assert secrets.llm_model is None

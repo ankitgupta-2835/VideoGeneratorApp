@@ -170,6 +170,10 @@ def _run_live(
     for stage in STAGE_ORDER:
         print(f"{stage.value}: {state.stages.get(stage.value)}")
     print(f"status: {state.status}")
+    # Surface why a stage failed (LLM error, throttled source, ...). Without
+    # this a failed run printed only "fail" and hid the cause.
+    for note in state.notes:
+        print(f"note: {note}")
     print(f"run_id: {state.run_id}")
     _print_artifacts(state, work_dir)
 

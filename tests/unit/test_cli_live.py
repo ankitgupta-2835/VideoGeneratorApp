@@ -13,8 +13,8 @@ import pytest
 
 from src.errors import ProviderError
 from src.pipeline.cli import main
-from src.pipeline.orchestrator import build_dry_run_stages
-from src.rerun.controller import STAGE_ORDER
+from src.pipeline.orchestrator import StageResult, build_dry_run_stages
+from src.rerun.controller import STAGE_ORDER, Stage
 
 
 class _BuilderSpy:
@@ -158,6 +158,31 @@ def test_dry_run_and_demo_are_mutually_exclusive(capsys):
         main(["--dry-run", "--demo", "--category", "ai_tech"])
     assert excinfo.value.code == 2
     assert "not allowed with" in capsys.readouterr().err
+
+
+def test_failed_stage_notes_are_printed(tmp_path: Path, capsys):
+    """A failed stage must print *why* it failed, not just "fail"."""
+
+    def failing_builder(**_kwargs):
+        def fail(_ctx):  # noqa: ANN001 - matches StageFn
+            return StageResult(
+                status="fail",
+                notes=["angle_strategist: LLM 429 quota exceeded"],
+            )
+
+        return {Stage.ANGLE: fail}
+
+    code = main(
+        ["--category", "ai_tech", "--work-dir", str(tmp_path)],
+        live_builder=failing_builder,
+        secrets_loader=_fake_secrets,
+        config_loader=_fake_config,
+    )
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "note:" in out
+    assert "429 quota exceeded" in out
 
 
 if __name__ == "__main__":  # pragma: no cover
