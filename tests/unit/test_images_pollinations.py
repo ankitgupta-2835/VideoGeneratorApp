@@ -14,9 +14,9 @@ from src.visuals.images_pollinations import PollinationsImageClient
 JPEG = b"\xff\xd8\xff\xe0mocked-jpeg-bytes"
 
 
-def make_client(handler, cache_dir: Path):
+def make_client(handler, cache_dir: Path, **kwargs):
     http = HttpClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
-    return PollinationsImageClient(http, cache_dir), http
+    return PollinationsImageClient(http, cache_dir, **kwargs), http
 
 
 def recording_handler(requests: list[httpx.Request], payload: bytes = JPEG):
@@ -121,3 +121,39 @@ def test_empty_body_raises_provider_error(tmp_path: Path):
         client.generate("a cat")
 
     assert len(requests) == 1
+
+
+def test_402_waits_retry_after_then_succeeds(tmp_path: Path):
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(
+                402,
+                json={
+                    "error": {
+                        "message": "Free limit reached: 1 image every 45 seconds. "
+                        "Retry after 2s."
+                    }
+                },
+            )
+        return httpx.Response(200, content=JPEG)
+
+    sleeps: list[float] = []
+    client, _ = make_client(handler, tmp_path, sleep=sleeps.append)
+
+    path = client.generate("a cat")
+
+    assert path.read_bytes() == JPEG
+    assert calls["n"] == 2
+    assert sleeps == [3.0]
+
+
+def test_token_is_forwarded_when_configured(tmp_path: Path):
+    requests: list[httpx.Request] = []
+    client, _ = make_client(recording_handler(requests), tmp_path, token="pollen-key")
+
+    client.generate("a cat")
+
+    assert requests[0].url.params["token"] == "pollen-key"

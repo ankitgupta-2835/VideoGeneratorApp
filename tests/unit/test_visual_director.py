@@ -268,7 +268,7 @@ def test_motion_kind_generates_image_then_renders(tmp_path: Path):
 # --------------------------------------------------------------------------- #
 # 6. per-scene failure does not abort the run
 # --------------------------------------------------------------------------- #
-def test_failing_scene_is_noted_and_others_continue(tmp_path: Path):
+def test_failing_scene_falls_back_to_placeholder_and_others_continue(tmp_path: Path):
     image = FakeImageClient(tmp_path, fail_for=("Narration for scene 2.",))
     agent = VisualDirectorAgent(image_client=image)
 
@@ -277,7 +277,11 @@ def test_failing_scene_is_noted_and_others_continue(tmp_path: Path):
     )
 
     assert result.status == "ok"
-    assert [item.index for item in result.data.items] == [1, 3]
+    # A failed tier must not drop the scene: assembly needs one asset per scene.
+    assert [item.index for item in result.data.items] == [1, 2, 3]
+    placeholder = result.data.items[1]
+    assert placeholder.provider == "placeholder"
+    assert Path(placeholder.path).is_file()
     assert any("scene 2" in note for note in result.notes)
 
 

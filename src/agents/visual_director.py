@@ -15,8 +15,10 @@ A scene's ``hero`` flag always wins over its declared ``visual.kind``.
 
 Routing is deliberately failure-tolerant: a tier that raises is recorded as a
 note and the remaining scenes are still processed, so a single bad prompt can
-never abort the whole run. The director only fails outright when there is
-nothing to route (an empty blueprint).
+never abort the whole run. A scene whose tier fails gets a deterministic local
+placeholder image instead, so assembly always has one asset per scene. The
+director only fails outright when there is nothing to route (an empty
+blueprint).
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from pydantic import BaseModel, Field
 from src.agents.base import Agent, AgentResult
 from src.http_client import HttpClient
 from src.schema.blueprint import Blueprint, Scene
+from src.visuals.placeholder import write_placeholder
 from src.visuals.stock import download
 
 __all__ = [
@@ -190,6 +193,25 @@ class VisualDirectorAgent(Agent):
                 asset = self._route(scene, payload)
             except Exception as exc:  # noqa: BLE001 - one bad scene must not abort the run
                 notes.append(f"scene {scene.index}: {exc}")
+                try:
+                    path = write_placeholder(
+                        payload.out_dir / f"scene_{scene.index:03d}_placeholder.png",
+                        width=payload.width,
+                        height=payload.height,
+                        seed=self._prompt_for(scene),
+                    )
+                except Exception as placeholder_exc:  # noqa: BLE001
+                    notes.append(f"scene {scene.index}: placeholder failed: {placeholder_exc}")
+                    continue
+                items.append(
+                    SceneAsset(
+                        index=scene.index,
+                        kind="image",
+                        path=str(path),
+                        provider="placeholder",
+                    )
+                )
+                notes.append(f"scene {scene.index}: using placeholder image")
                 continue
             items.append(asset)
 

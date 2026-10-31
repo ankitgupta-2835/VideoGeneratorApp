@@ -9,6 +9,10 @@ entirely.
 from __future__ import annotations
 
 import hashlib
+import os
+import re
+import time
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote
 
@@ -17,13 +21,31 @@ from src.http_client import HttpClient
 
 __all__ = ["PollinationsImageClient"]
 
+_RETRY_AFTER = re.compile(r"Retry after (\d+)\s*s", re.IGNORECASE)
+
+
+def _retry_after_seconds(message: str) -> float | None:
+    """Parse Pollinations' ``Retry after 31s`` hint, if present."""
+    match = _RETRY_AFTER.search(message)
+    return float(match.group(1)) if match else None
+
 
 class PollinationsImageClient:
     BASE = "https://image.pollinations.ai/prompt"
 
-    def __init__(self, http: HttpClient, cache_dir: Path) -> None:
+    def __init__(
+        self,
+        http: HttpClient,
+        cache_dir: Path,
+        *,
+        token: str | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         self._http = http
         self._cache_dir = Path(cache_dir)
+        # An optional "pollen" token lifts the free 1-image/45s IP limit.
+        self._token = token or os.environ.get("POLLINATIONS_TOKEN") or None
+        self._sleep = sleep
 
     # ------------------------------------------------------------------ #
     # helpers
@@ -61,8 +83,23 @@ class PollinationsImageClient:
         }
         if seed is not None:
             params["seed"] = seed
+        if self._token:
+            params["token"] = self._token
 
-        data = self._http.get_bytes(url, params=params)
+        # The free tier is rate limited (1 image / 45 s). When we get a 402 the
+        # body tells us how long to wait; retry once so slow demos still get a
+        # real image instead of a placeholder.
+        data: bytes | None = None
+        for attempt in range(2):
+            try:
+                data = self._http.get_bytes(url, params=params)
+                break
+            except ProviderError as exc:
+                wait = _retry_after_seconds(str(exc))
+                if wait is None or attempt == 1:
+                    raise
+                self._sleep(min(wait + 1.0, 90.0))
+
         if not data:
             raise ProviderError("pollinations returned an empty image body")
 
